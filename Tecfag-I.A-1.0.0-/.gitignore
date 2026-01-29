@@ -42,3 +42,8 @@ dist-ssr
 # - server/uploads/ (documentos)
 # - server/backups/
 # ===========================================
+# Debug / Setup Temporaries
+# ===========================================
+debug-*.txt
+models_list.txt
+*.timestamp-*.mjs

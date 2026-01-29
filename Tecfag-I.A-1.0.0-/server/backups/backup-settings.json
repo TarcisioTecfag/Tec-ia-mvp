@@ -1,0 +1,6 @@
+{
+  "maxBackups": 50,
+  "intervalHours": 6,
+  "lastScheduledBackup": "2026-01-29T11:19:08.663Z",
+  "nextScheduledBackup": "2026-01-29T18:22:29.981Z"
+}

@@ -14,6 +14,7 @@ export type QueryType =
     | 'exploratory'    // "O que temos sobre envasadoras?"
     | 'procedural'     // "Como operar a máquina X?"
     | 'greeting'       // "Bom dia", "Olá"
+    | 'recommendation' // "Qual máquina para embalar sachê?"
     | 'general';       // Pergunta geral
 
 export interface QueryAnalysis {
@@ -69,6 +70,19 @@ const GREETING_PATTERNS = [
     /^(como\s+vai|tudo\s+bem)/i,
 ];
 
+// Padrões para detectar perguntas de RECOMENDAÇÃO de máquinas/produtos
+const RECOMMENDATION_PATTERNS = [
+    /qual\s+(máquina|maquina|equipamento|produto)\s+(devo|posso|para|usar|ideal)/i,
+    /recomendar?\s+(uma?|qual|alguma)/i,
+    /indicar?\s+(uma?|para|qual)/i,
+    /melhor\s+(opção|escolha|máquina|maquina)\s+para/i,
+    /o\s+que\s+(usar|utilizar)\s+para/i,
+    /(embalar|envasar|selar|rotular|datar|empacotar)\s+.*(sachê|sache|garrafa|pote|embalagem)/i,
+    /máquina\s+para\s+(embalar|envasar|selar|rotular)/i,
+    /equipamento\s+para\s+(embalar|envasar|selar|rotular)/i,
+    /solução\s+para\s+(embalar|envasar|embalagem)/i,
+];
+
 // Categorias de máquinas/produtos conhecidos
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'envasadoras': ['envasadora', 'envase', 'dosadora', 'dosagem', 'peristáltica', 'pistão'],
@@ -112,8 +126,14 @@ export function analyzeQuery(question: string): QueryAnalysis {
     const type = detectQueryType(lowerQuestion);
     const isCountQuery = /quant[oa]s?|total|número|contagem/i.test(lowerQuestion);
 
+    // Detectar códigos de produto para forçar Hybrid Search
+    // Regex matches patterns like "VSF 30S", "VSF-30S", "TC20", "TC-20"
+    const productCodeRegex = /\b([a-zA-Z]{2,})[\s-]?(\d+[a-zA-Z0-9]*)\b/;
+    const hasProductCode = productCodeRegex.test(question); // Use original case-sensitive question for better matching, though regex handles it
+
     // Determinar se precisa de multi-query
-    const needsMultiQuery = type === 'aggregation' || type === 'exploratory';
+    // SEMPRE usar multi-query se tiver código de produto para garantir Hybrid Search (keyword match)
+    const needsMultiQuery = type === 'aggregation' || type === 'exploratory' || hasProductCode;
 
     // Determinar tamanho de contexto baseado no tipo
     const contextSize = determineContextSize(type, isCountQuery, categories.length);
@@ -137,6 +157,10 @@ export function analyzeQuery(question: string): QueryAnalysis {
 }
 
 function detectQueryType(question: string): QueryType {
+    // Verificar recomendação ANTES de exploratory (tem sobreposição)
+    if (RECOMMENDATION_PATTERNS.some(p => p.test(question))) {
+        return 'recommendation';
+    }
     if (AGGREGATION_PATTERNS.some(p => p.test(question))) {
         return 'aggregation';
     }
@@ -183,37 +207,60 @@ function extractKeywords(question: string): string[] {
 
 function determineContextSize(type: QueryType, isCountQuery: boolean, categoryCount: number): number {
     // Base context sizes por tipo
+    // REDUCED to avoid overwhelming LLM (too much context = truncated responses)
+    // Each chunk ≈ 1000 tokens, so 20 chunks ≈ 20K tokens input
     const baseSizes: Record<QueryType, number> = {
         'greeting': 0,
-        'factual': 15,
-        'comparative': 25,
-        'procedural': 20,
-        'exploratory': 40,
-        'aggregation': 200,  // Aumentado para suportar full document retrieval
-        'general': 20,
+        'factual': 15,          // Reduzido: menos é mais focado
+        'comparative': 25,       // Reduzido: comparações focadas
+        'procedural': 20,        // Reduzido: procedimentos específicos
+        'exploratory': 30,       // Reduzido: exploratórias mais focadas
+        'recommendation': 40,    // Reduzido: opções mais relevantes
+        'aggregation': 50,       // Reduzido significativamente (era 300!)
+        'general': 20,           // Margem de segurança
     };
 
     let size = baseSizes[type];
 
     // Aumentar se for query de contagem
     if (isCountQuery) {
-        size = Math.max(size, 80);
+        size = Math.max(size, 40);
     }
 
     // Se especificou categorias, pode reduzir um pouco (busca mais focada)
     if (categoryCount > 0 && type === 'aggregation') {
-        size = Math.min(size, 60);
+        size = Math.min(size, 35);
     }
 
     return size;
 }
 
 function generateSubQueries(question: string, type: QueryType, categories: string[]): string[] {
-    if (type !== 'aggregation' && type !== 'exploratory') {
+    if (type !== 'aggregation' && type !== 'exploratory' && type !== 'recommendation') {
         return [];
     }
 
     const queries: string[] = [];
+
+    // Para recomendações, gerar queries específicas por tipo de máquina
+    if (type === 'recommendation') {
+        // Extrair aplicação da pergunta (ex: "sachê", "líquido", "pó")
+        const applicationKeywords = ['sachê', 'sache', 'garrafa', 'pote', 'líquido', 'liquido', 'pó', 'po', 'grão', 'grao', 'pastoso'];
+        const lowerQ = question.toLowerCase();
+        const detectedApp = applicationKeywords.find(kw => lowerQ.includes(kw)) || 'embalagem';
+
+        queries.push(
+            `máquinas para ${detectedApp}`,
+            `empacotadora sachê automática`,
+            `envasadora automática pouch`,
+            `seladora para sachê`,
+            `dosadora automática`,
+            `linha de empacotamento`,
+            `catálogo de empacotadoras`,
+            `especificações técnicas envasadora`
+        );
+        return queries;
+    }
 
     // Se tem categorias específicas, gerar queries por categoria
     if (categories.length > 0) {
@@ -256,6 +303,12 @@ Para responder corretamente:
 5. NÃO estime - conte apenas o que está explicitamente nos documentos
 6. Se houver duplicatas, conte apenas uma vez
 
+PARA LISTAS LONGAS (>50 ITENS):
+- Cite o Nome/Modelo e uma BREVE descrição (1 linha).
+- Exemplo: "1. Envasadora X - Ideal para pós"
+- Mantenha a resposta densa e direta.
+- Use colunas se possível.
+
 FORMATO DE RESPOSTA PARA CONTAGENS:
 - Apresente o TOTAL GERAL primeiro
 - Em seguida, detalhe por categoria/segmento
@@ -274,6 +327,13 @@ Para responder corretamente:
 3. Organize por categorias quando há muitos itens
 4. Inclua informações-chave de cada item
 5. Não omita itens - a completude é essencial
+
+PARA LISTAS MUITO GRANDES (MODO NOTEBOOK DATA):
+- O usuário EXIGE a lista completa (300+ itens).
+- NÃO RESUMA. NÃO PAGINE.
+- Trate isso como uma tarefa de PROCESSAMENTO DE DADOS, não uma conversa.
+- Se houver descrições, mantenha-as curtas (1 linha).
+- Se a lista for gigante, apenas liste.
 `;
     }
 

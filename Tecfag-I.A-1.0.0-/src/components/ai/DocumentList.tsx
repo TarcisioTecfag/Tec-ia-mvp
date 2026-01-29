@@ -116,9 +116,9 @@ export function DocumentList({
             {documents.map((doc) => (
                 <div
                     key={doc.id}
-                    className={`bg-white dark:bg-gray-800 border rounded-lg p-4 hover:shadow-md transition-all ${isSelected(doc.id)
-                            ? 'border-primary bg-primary/5 dark:bg-primary/10'
-                            : 'border-gray-200 dark:border-gray-700'
+                    className={`bg-[#1a1a1a] border rounded-lg p-4 hover:shadow-md transition-all ${isSelected(doc.id)
+                        ? 'border-primary bg-primary/5'
+                        : 'border-white/5 hover:border-primary/40'
                         }`}
                 >
                     <div className="flex items-start justify-between">
@@ -139,10 +139,10 @@ export function DocumentList({
 
                             {getFileIcon(doc.fileType)}
                             <div className="flex-1 min-w-0">
-                                <h4 className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                                <h4 className="font-medium text-white truncate">
                                     {doc.fileName}
                                 </h4>
-                                <div className="flex items-center gap-4 mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                <div className="flex items-center gap-4 mt-1 text-xs text-white/50">
                                     <span>{formatFileSize(doc.fileSize)}</span>
                                     {doc.indexed && doc.chunkCount && (
                                         <span>{doc.chunkCount} chunks</span>
@@ -179,7 +179,7 @@ export function DocumentList({
                                 {/* Download Button */}
                                 <button
                                     onClick={() => handleDownload(doc.id, doc.fileName)}
-                                    className="p-2 text-gray-500 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                                    className="p-2 text-white/40 hover:text-green-400 transition-colors"
                                     title="Baixar documento"
                                 >
                                     <Download className="w-4 h-4" />
@@ -187,7 +187,7 @@ export function DocumentList({
                                 {doc.indexed && (
                                     <button
                                         onClick={() => onReindex(doc.id)}
-                                        className="p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                        className="p-2 text-white/40 hover:text-blue-400 transition-colors"
                                         title="Reindexar documento"
                                     >
                                         <RefreshCw className="w-4 h-4" />
@@ -195,7 +195,7 @@ export function DocumentList({
                                 )}
                                 <button
                                     onClick={() => onDelete(doc.id)}
-                                    className="p-2 text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                                    className="p-2 text-white/40 hover:text-red-400 transition-colors"
                                     title="Deletar documento"
                                 >
                                     <Trash2 className="w-4 h-4" />

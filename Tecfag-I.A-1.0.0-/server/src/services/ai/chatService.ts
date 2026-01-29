@@ -3,7 +3,13 @@ import { generateEmbedding } from './embeddings';
 import { searchSimilarChunks, getDocumentStats } from './vectorDB';
 import { analyzeQuery, generateAggregationPrompt, QueryAnalysis } from './queryAnalyzer';
 import { multiQuerySearch, groupChunksByDocument, formatGroupedContext } from './multiQueryRAG';
+import { rerankChunks } from './reranker';
+import * as sessionMemory from './sessionMemory';
+import * as cacheService from './cacheService';
 import Groq from 'groq-sdk';
+import notificationService from '../notificationService';
+import { prisma } from '../../config/database';
+import * as path from 'path';
 
 // Gemini 2.5 Flash como provider principal, Groq como fallback
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
@@ -31,9 +37,11 @@ export interface ChatResponse {
         totalTokens: number;
         model: string;
     };
+    fromCache?: boolean;  // Indica se a resposta veio do cache
 }
 
 export interface UserProfile {
+    userId?: string;  // Required for session context
     name?: string;
     jobTitle?: string;
     department?: string;
@@ -82,10 +90,30 @@ export async function answerQuestion(
     chatHistory: ChatMessage[] = [],
     mode: 'direct' | 'casual' | 'educational' | 'professional' = 'educational',
     isTableMode: boolean = false,
-    userProfile?: UserProfile
+    userProfile?: UserProfile,
+    isAttachmentMode: boolean = false
 ): Promise<ChatResponse> {
     try {
-        console.log(`[ChatService] Processing question: ${question.substring(0, 50)}... (Mode: ${mode}, Provider: Gemini 2.5 Flash)`);
+        console.log(`[ChatService] Processing question: ${question.substring(0, 50)}... (Mode: ${mode}, Provider: Gemini 2.5 Flash, Attachment: ${isAttachmentMode})`);
+
+        // ═══════════════════════════════════════════════════════════════
+        // SESSION CONTEXT: Process user context for memory-aware responses
+        // ═══════════════════════════════════════════════════════════════
+        let contextInstruction = '';
+        if (userProfile?.userId) {
+            try {
+                const responseFormat = isTableMode ? 'table' : 'normal';
+                const { contextInstruction: ctxInst } = await sessionMemory.processMessageContext(
+                    userProfile.userId,
+                    question,
+                    responseFormat
+                );
+                contextInstruction = ctxInst;
+                console.log(`[ChatService] Session context loaded for user ${userProfile.userId}`);
+            } catch (ctxError: any) {
+                console.warn(`[ChatService] Session context error (non-fatal): ${ctxError.message}`);
+            }
+        }
 
         // ═══════════════════════════════════════════════════════════════
         // ADVANCED RAG: Step 1 - Analyze the query to determine strategy
@@ -105,6 +133,21 @@ export async function answerQuestion(
             return {
                 response: generateGreetingResponse(question, mode),
                 sources: []
+            };
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // CACHE CHECK: Step 1.5 - Check for cached response
+        // ═══════════════════════════════════════════════════════════════
+        // First, check exact cache (by hash)
+        const cachedExact = await cacheService.getCachedResponseExact(question, catalogId);
+        if (cachedExact) {
+            console.log(`[ChatService] 🚀 Returning CACHED response (exact match)`);
+            await cacheService.recordCacheHit(cachedExact.id);
+            return {
+                response: cachedExact.response,
+                sources: cachedExact.sources,
+                fromCache: true
             };
         }
 
@@ -141,7 +184,25 @@ export async function answerQuestion(
             }
         } else {
             // Standard semantic search for factual queries
-            const questionEmbedding = await generateEmbedding(question);
+            // First check embedding cache
+            let questionEmbedding = await cacheService.getEmbeddingFromCache(question);
+            if (!questionEmbedding) {
+                questionEmbedding = await generateEmbedding(question);
+                await cacheService.cacheEmbedding(question, questionEmbedding);
+            }
+
+            // Check semantic cache before doing full RAG
+            const cachedSemantic = await cacheService.getCachedResponseSemantic(questionEmbedding, catalogId);
+            if (cachedSemantic) {
+                console.log(`[ChatService] 🚀 Returning CACHED response (semantic match)`);
+                await cacheService.recordCacheHit(cachedSemantic.id);
+                return {
+                    response: cachedSemantic.response,
+                    sources: cachedSemantic.sources,
+                    fromCache: true
+                };
+            }
+
             relevantChunks = await searchSimilarChunks(
                 questionEmbedding,
                 queryAnalysis.contextSize,
@@ -150,6 +211,30 @@ export async function answerQuestion(
         }
 
         console.log(`[ChatService] Found ${relevantChunks.length} relevant chunks`);
+
+        // ═══════════════════════════════════════════════════════════════
+        // RERANKING: Use Gemini to reorder chunks by relevance
+        // This is KEY for matching NotebookLM quality
+        // ═══════════════════════════════════════════════════════════════
+        if (relevantChunks.length > 10 &&
+            (queryAnalysis.type === 'recommendation' || queryAnalysis.type === 'exploratory' || queryAnalysis.type === 'comparative')) {
+            console.log(`[ChatService] 🎯 Applying reranking for ${queryAnalysis.type} query...`);
+            try {
+                const rerankedChunks = await rerankChunks(question, relevantChunks, Math.min(relevantChunks.length, 50));
+                // Convert back to expected format
+                relevantChunks = rerankedChunks.map(rc => ({
+                    id: rc.id,
+                    content: rc.content,
+                    similarity: rc.combinedScore, // Use combined score
+                    metadata: rc.metadata,
+                    documentId: rc.documentId,
+                    chunkIndex: rc.chunkIndex
+                }));
+                console.log(`[ChatService] ✅ Reranking complete. Top chunk score: ${relevantChunks[0]?.similarity.toFixed(3)}`);
+            } catch (rerankError: any) {
+                console.warn(`[ChatService] ⚠️ Reranking failed, using original order: ${rerankError.message}`);
+            }
+        }
 
         // Log chunk distribution for debugging
         const chunksByDoc = new Map<string, number>();
@@ -188,6 +273,50 @@ ${chunk.content}`;
 
         // Add aggregation-specific prompt if needed
         const aggregationPrompt = generateAggregationPrompt(question, queryAnalysis);
+
+        // Add recommendation-specific prompt for multi-option responses
+        const recommendationPrompt = queryAnalysis.type === 'recommendation' ? `
+📍 **PERGUNTA DE RECOMENDAÇÃO DETECTADA**
+Esta pergunta pede uma RECOMENDAÇÃO de equipamento/máquina. Siga estas regras OBRIGATÓRIAS:
+
+1. **IDENTIFICAÇÃO DO PRODUTO** (SE NÃO ESPECIFICADO):
+   - Se a pergunta não especificar CLARAMENTE o tipo de produto (pó, líquido, grão, pastoso), o formato desejado (sachê stick, sachê 3 soldas, pouch, etc.), ou o volume de produção, PERGUNTE PRIMEIRO antes de recomendar.
+   - Exemplo: "Para recomendar a máquina ideal, preciso saber: qual tipo de produto será embalado (pó, grãos, líquido)? Qual o formato de sachê desejado?"
+
+2. **MÚLTIPLAS OPÇÕES (OBRIGATÓRIO)**:
+   - SEMPRE apresente pelo menos **3-4 opções de máquinas diferentes**, organizadas por categoria/aplicação.
+   - Use formatação estruturada com headers para cada categoria:
+     ### 1. Para Sachês tipo [Tipo] (Aplicação)
+     - **Modelo**: [Nome da máquina]
+     - **Dosagem**: [Faixa em g ou ml]
+     - **Produtividade**: [embalagens/min]
+     - **Tipo de Selagem**: [descrição]
+   
+3. **COMPARAÇÃO PRÁTICA**:
+   - Ao final, compare brevemente QUANDO cada opção é mais indicada.
+   - Adicione uma "Dica de Especialista" BREVE (máximo 2-3 linhas) - NÃO domine a resposta com metodologia SPICED.
+
+4. **PRIORIZE ESPECIFICAÇÕES TÉCNICAS**:
+   - Foque em informações objetivas: capacidade, produtividade, tipo de selagem.
+   - NÃO use metodologia SPICED para perguntas de recomendação técnica.
+   - Seja como um catálogo técnico interativo, não um vendedor.
+
+303: EXEMPLO DE ESTRUTURA ESPERADA:
+"Para recomendar a máquina ideal para embalar e envasar sachê, identifiquei as seguintes opções com base no tipo de produto:
+
+### 1. Para Sachês tipo Stick (Pós)
+- **Modelo**: AFPP2830B
+- **Dosagem**: 10 a 30g
+- **Produtividade**: 25 a 35 emb/min
+- **Selagem**: 3 soldas
+
+### 2. Para Sachês Tradicionais (Pós/Granulados)
+[...]
+
+### Qual escolher?
+- Se o produto for pó fino: opte pela AFPP2830B
+- Se precisar de sachês com 4 soldas: AFPP1528A
+[...]"` : '';
 
         // Build User Profile Context
         let userProfileContext = '';
@@ -242,9 +371,74 @@ REGRAS DE FONTE (RAG) - LEIA COM ATENÇÃO:
 ${userProfileContext}
 ${searchMetadata}
 ${aggregationPrompt}
+${recommendationPrompt}
+${contextInstruction}
 
 DOCUMENTOS DE REFERÊNCIA (USE TODO O CONTEÚDO ABAIXO):
 ${context}`;
+
+        // ═══════════════════════════════════════════════════════════════
+        // IMAGE LINKING: Find relevant images in chunks and append to response
+        // ═══════════════════════════════════════════════════════════════
+        let imageAppendix = '';
+
+        // Only process images if attachment mode is active
+        if (isAttachmentMode) {
+            const imageChunks = relevantChunks.filter(c => c.metadata?.isImage === true);
+
+            if (imageChunks.length > 0) {
+                console.log(`[ChatService] 🖼️ Found ${imageChunks.length} image chunks relevant to query`);
+
+                // Deduplicate images by normalized filename (case-insensitive, URL-decoded)
+                const uniqueImages = new Set<string>();
+                const images: Array<{ fileName: string, storedName: string }> = [];
+
+                for (const chunk of imageChunks) {
+                    const fileName = chunk.metadata.fileName;
+                    // Normalize filename for deduplication
+                    const normalizedFileName = decodeURIComponent(fileName || '').toLowerCase().trim();
+
+                    if (fileName && !uniqueImages.has(normalizedFileName)) {
+                        uniqueImages.add(normalizedFileName);
+
+                        let storedName = chunk.metadata.storedFileName;
+
+                        // Fallback: If storedFileName is missing (old documents), fetch from DB
+                        if (!storedName && chunk.documentId) {
+                            try {
+                                const doc = await prisma.document.findUnique({
+                                    where: { id: chunk.documentId },
+                                    select: { filePath: true }
+                                });
+                                if (doc?.filePath) {
+                                    storedName = path.basename(doc.filePath);
+                                }
+                            } catch (err) {
+                                console.warn(`[ChatService] Failed to resolve file path for doc ${chunk.documentId}`);
+                            }
+                        }
+
+                        images.push({
+                            fileName,
+                            storedName: storedName || fileName // Fallback to original name if all else fails
+                        });
+                    }
+                }
+
+                if (images.length > 0) {
+                    imageAppendix = '\n\n---\n\n### Imagens Relacionadas:\n\n';
+                    images.forEach(img => {
+                        // Encode filename for URL
+                        const encodedName = encodeURIComponent(img.storedName);
+                        // Use absolute URL to backend static files
+                        // Assuming uploadDir is mounted at /uploads
+                        const imageUrl = `http://localhost:3001/uploads/${encodedName}`;
+                        imageAppendix += `![${img.fileName}](${imageUrl})\n\n`;
+                    });
+                    console.log(`[ChatService] Added ${images.length} images to response`);
+                }
+            }
+        }
 
         const tableInstruction = isTableMode
             ? `\n\nREQUISITO ESPECIAL DE FORMATAÇÃO:
@@ -394,19 +588,24 @@ Elabore uma resposta completa baseada nos documentos acima.`;
         ];
 
         try {
-            // PRIMARY: Gemini 2.5 Flash
-            const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+            // PRIMARY: Gemini 2.5 Pro (User Requested)
+            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
 
-            console.log(`[ChatService] Requesting completion from Gemini 2.5 Flash...`);
+            console.log(`[ChatService] Requesting completion from Gemini 2.5 Pro (High Reasoning)...`);
             const result = await model.generateContent({
                 contents: geminiMessages as any,
                 generationConfig: {
-                    temperature: 0.3,
-                    maxOutputTokens: 12000
+                    temperature: 0.2, // Low temp for analytical precision (NotebookLM style)
+                    maxOutputTokens: 65536 // Massive output limit for full lists
                 }
             });
 
             response = result.response.text();
+
+            // Append images if found
+            if (imageAppendix) {
+                response += imageAppendix;
+            }
 
             // Capture token usage from Gemini
             const usageMetadata = result.response.usageMetadata;
@@ -448,6 +647,11 @@ Elabore uma resposta completa baseada nos documentos acima.`;
                 response = completion.choices[0]?.message?.content || "";
                 response += '\n\n*(Backup: Groq Llama 3.3)*';
 
+                // Append images if found
+                if (imageAppendix) {
+                    response += imageAppendix;
+                }
+
                 // Capture token usage from Groq
                 if (completion.usage) {
                     tokenUsage = {
@@ -461,6 +665,16 @@ Elabore uma resposta completa baseada nos documentos acima.`;
 
             } catch (groqError: any) {
                 console.error('[ChatService] ❌ Both Gemini and Groq failed:', groqError);
+
+                // Notificar admins sobre falha crítica de IA
+                await notificationService.broadcastToAdmins(
+                    'system',
+                    '🚨 Falha Crítica: APIs de IA Indisponíveis',
+                    `Gemini: ${geminiError.message} | Groq: ${groqError.message}`,
+                    'error',
+                    { geminiError: geminiError.message, groqError: groqError.message }
+                );
+
                 throw new Error(`AI providers unavailable: Gemini (${geminiError.message}), Groq (${groqError.message})`);
             }
         }
@@ -474,6 +688,22 @@ Elabore uma resposta completa baseada nos documentos acima.`;
             similarity: chunk.similarity
         }));
 
+        // 7. Cache the response for future use
+        try {
+            const documentIds = [...new Set(relevantChunks.map(c => c.documentId).filter(Boolean))];
+            const questionEmbedding = await cacheService.getEmbeddingFromCache(question) || await generateEmbedding(question);
+            await cacheService.cacheResponse(
+                question,
+                questionEmbedding,
+                response,
+                sources,
+                documentIds,
+                catalogId
+            );
+        } catch (cacheError: any) {
+            console.warn(`[ChatService] Failed to cache response (non-fatal): ${cacheError.message}`);
+        }
+
         return {
             response,
             sources,
@@ -483,6 +713,316 @@ Elabore uma resposta completa baseada nos documentos acima.`;
     } catch (error: any) {
         console.error('[ChatService] Error:', error);
         throw new Error(`Failed to generate response: ${error.message}`);
+    }
+}
+
+/**
+ * Streaming version of answerQuestion - yields text chunks as they arrive
+ */
+export async function* answerQuestionStream(
+    question: string,
+    catalogId?: string,
+    chatHistory: ChatMessage[] = [],
+    mode: 'direct' | 'casual' | 'educational' | 'professional' = 'educational',
+    isTableMode: boolean = false,
+    userProfile?: UserProfile
+): AsyncGenerator<{ type: 'chunk' | 'done' | 'error'; content?: string; sources?: any[]; tokenUsage?: ChatResponse['tokenUsage'] }> {
+    try {
+        console.log(`[ChatService Stream] Processing question: ${question.substring(0, 50)}...`);
+
+        // ═══════════════════════════════════════════════════════════════
+        // SESSION CONTEXT: Process user context for memory-aware responses
+        // ═══════════════════════════════════════════════════════════════
+        let contextInstruction = '';
+        if (userProfile?.userId) {
+            try {
+                const responseFormat = isTableMode ? 'table' : 'normal';
+                const { contextInstruction: ctxInst } = await sessionMemory.processMessageContext(
+                    userProfile.userId,
+                    question,
+                    responseFormat
+                );
+                contextInstruction = ctxInst;
+                console.log(`[ChatService Stream] Session context loaded for user ${userProfile.userId}`);
+            } catch (ctxError: any) {
+                console.warn(`[ChatService Stream] Session context error (non-fatal): ${ctxError.message}`);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // STEP 1: Analyze query (same as non-streaming)
+        // ═══════════════════════════════════════════════════════════════
+        const queryAnalysis = analyzeQuery(question);
+
+        // Handle greetings without RAG
+        if (queryAnalysis.type === 'greeting') {
+            const greetingResponse = generateGreetingResponse(question, mode);
+            yield { type: 'chunk', content: greetingResponse };
+            yield { type: 'done', sources: [] };
+            return;
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // STEP 2: Retrieve relevant chunks (same as non-streaming)
+        // ═══════════════════════════════════════════════════════════════
+        let relevantChunks;
+        let searchMetadata = '';
+
+        if (queryAnalysis.needsMultiQuery) {
+            const multiResult = await multiQuerySearch(question, queryAnalysis, catalogId);
+            relevantChunks = multiResult.chunks;
+            searchMetadata = `\n📊 INFORMAÇÃO DO SISTEMA: Consultados ${multiResult.uniqueDocuments.length} documentos, ${multiResult.chunks.length} trechos.\n`;
+
+            if (queryAnalysis.isCountQuery) {
+                const stats = await getDocumentStats(catalogId);
+                searchMetadata += `📈 ESTATÍSTICAS: ${stats.totalDocuments} docs, ${stats.totalChunks} chunks.\n`;
+            }
+        } else {
+            const questionEmbedding = await generateEmbedding(question);
+            relevantChunks = await searchSimilarChunks(
+                questionEmbedding,
+                queryAnalysis.contextSize,
+                catalogId ? { catalogId } : undefined
+            );
+        }
+
+        if (relevantChunks.length === 0) {
+            yield { type: 'chunk', content: 'Não encontrei informações suficientes nos documentos para responder sua pergunta.' };
+            yield { type: 'done', sources: [] };
+            return;
+        }
+
+        // Apply reranking if needed
+        if (relevantChunks.length > 10 &&
+            (queryAnalysis.type === 'recommendation' || queryAnalysis.type === 'exploratory' || queryAnalysis.type === 'comparative')) {
+            try {
+                const rerankedChunks = await rerankChunks(question, relevantChunks, Math.min(relevantChunks.length, 50));
+                relevantChunks = rerankedChunks.map(rc => ({
+                    id: rc.id,
+                    content: rc.content,
+                    similarity: rc.combinedScore,
+                    metadata: rc.metadata,
+                    documentId: rc.documentId,
+                    chunkIndex: rc.chunkIndex
+                }));
+            } catch (rerankError: any) {
+                console.warn(`[ChatService Stream] Reranking failed: ${rerankError.message}`);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // STEP 3: Build context and prompts (same as non-streaming)
+        // ═══════════════════════════════════════════════════════════════
+        let context: string;
+        if (queryAnalysis.type === 'aggregation' || queryAnalysis.type === 'exploratory') {
+            const groupedChunks = groupChunksByDocument(relevantChunks);
+            context = formatGroupedContext(groupedChunks);
+        } else {
+            context = relevantChunks
+                .map((chunk, index) => {
+                    const metadata = chunk.metadata || {};
+                    return `[ID: ${index + 1} | Fonte: ${metadata.fileName || 'Documento'}]\n${chunk.content}`;
+                })
+                .join('\n\n---\n\n');
+        }
+
+        const aggregationPrompt = generateAggregationPrompt(question, queryAnalysis);
+
+        // Build User Profile Context
+        let userProfileContext = '';
+        if (userProfile) {
+            userProfileContext = `\nPERFIL: ${userProfile.name || 'Usuário'}, ${userProfile.jobTitle || ''}, ${userProfile.department || ''}\n`;
+        }
+
+        // Simplified system prompt for streaming (same structure but no need to repeat full prompts)
+        let systemPrompt = '';
+        const baseContext = `REGRAS: Use APENAS os documentos abaixo. NÃO invente informações.\n${userProfileContext}${searchMetadata}${aggregationPrompt}${contextInstruction}\n\nDOCUMENTOS:\n${context}`;
+
+        // ═══════════════════════════════════════════════════════════════
+        // IMAGE LINKING (STREAM): Prepare image appendix
+        // ═══════════════════════════════════════════════════════════════
+        const imageChunks = relevantChunks.filter(c => c.metadata?.isImage === true);
+        let imageAppendix = '';
+
+        if (imageChunks.length > 0) {
+            console.log(`[ChatService Stream] 🖼️ Found ${imageChunks.length} image chunks relevant to query`);
+
+            // Deduplicate images by normalized filename
+            const uniqueImages = new Set<string>();
+            const images: Array<{ fileName: string, storedName: string }> = [];
+
+            for (const chunk of imageChunks) {
+                const fileName = chunk.metadata.fileName;
+                // Normalize filename for deduplication (case-insensitive, decode URL encoding)
+                const normalizedFileName = decodeURIComponent(fileName || '').toLowerCase().trim();
+
+                if (fileName && !uniqueImages.has(normalizedFileName)) {
+                    uniqueImages.add(normalizedFileName);
+
+                    let storedName = chunk.metadata.storedFileName;
+
+                    // Fallback: If storedFileName is missing (old documents), fetch from DB
+                    if (!storedName && chunk.documentId) {
+                        try {
+                            const doc = await prisma.document.findUnique({
+                                where: { id: chunk.documentId },
+                                select: { filePath: true }
+                            });
+                            if (doc?.filePath) {
+                                storedName = path.basename(doc.filePath);
+                            }
+                        } catch (err) {
+                            console.warn(`[ChatService Stream] Failed to resolve file path for doc ${chunk.documentId}`);
+                        }
+                    }
+
+                    images.push({
+                        fileName,
+                        storedName: storedName || fileName // Fallback to original name if all else fails
+                    });
+                }
+            }
+
+            if (images.length > 0) {
+                imageAppendix = '\n\n---\n\n### Imagens Relacionadas:\n\n';
+                images.forEach(img => {
+                    const encodedName = encodeURIComponent(img.storedName);
+                    const imageUrl = `http://localhost:3001/uploads/${encodedName}`;
+                    imageAppendix += `![${img.fileName}](${imageUrl})\n\n`;
+                });
+                console.log(`[ChatService Stream] Added ${images.length} unique images to response`);
+            }
+        }
+
+
+
+        const tableInstruction = isTableMode ? '\n\nUSE TABELAS MARKDOWN quando apropriado.' : '';
+
+        // Mode-specific prompts (simplified)
+        switch (mode) {
+            case 'direct':
+                systemPrompt = `Especialista técnico Tecfag. Respostas objetivas e diretas.\n\n${baseContext}${tableInstruction}`;
+                break;
+            case 'casual':
+                systemPrompt = `Colega experiente Tecfag. Tom informal e prestativo.\n\n${baseContext}${tableInstruction}`;
+                break;
+            case 'professional':
+                systemPrompt = `Consultor de vendas Tecfag. Abordagem consultiva SPICED quando relevante.\n\n${baseContext}${tableInstruction}`;
+                break;
+            default:
+                systemPrompt = `Especialista técnico Tecfag. Tom educativo, explicando conceitos.\n\n${baseContext}${tableInstruction}`;
+                break;
+        }
+
+        const userPrompt = `PERGUNTA: "${question}"\n\nResponda baseado nos documentos acima.`;
+
+        // Build messages for Gemini
+        const geminiMessages = [
+            { role: 'user', parts: [{ text: systemPrompt }] },
+            { role: 'model', parts: [{ text: `Entendido. Modo ${mode} ativado.` }] },
+            ...chatHistory.slice(-6).map(msg => ({
+                role: msg.role === 'user' ? 'user' : 'model',
+                parts: [{ text: msg.content }]
+            })),
+            { role: 'user', parts: [{ text: userPrompt }] }
+        ];
+
+        // ═══════════════════════════════════════════════════════════════
+        // STEP 4: Stream response from Gemini
+        // ═══════════════════════════════════════════════════════════════
+        let tokenUsage: ChatResponse['tokenUsage'] = undefined;
+        let fullResponse = '';
+
+        try {
+            const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+            console.log(`[ChatService Stream] Starting Gemini streaming...`);
+
+            const streamResult = await model.generateContentStream({
+                contents: geminiMessages as any,
+                generationConfig: {
+                    temperature: 0.3,
+                    maxOutputTokens: 12000
+                }
+            });
+
+            for await (const chunk of streamResult.stream) {
+                const chunkText = chunk.text();
+                if (chunkText) {
+                    fullResponse += chunkText;
+                    yield { type: 'chunk', content: chunkText };
+                }
+            }
+
+            // Append images at the end of stream
+            if (imageAppendix) {
+                yield { type: 'chunk', content: imageAppendix };
+            }
+
+            // Get final token usage
+            const finalResponse = await streamResult.response;
+            const usageMetadata = finalResponse.usageMetadata;
+            if (usageMetadata) {
+                tokenUsage = {
+                    inputTokens: usageMetadata.promptTokenCount || 0,
+                    outputTokens: usageMetadata.candidatesTokenCount || 0,
+                    totalTokens: usageMetadata.totalTokenCount || 0,
+                    model: GEMINI_MODEL,
+                };
+            }
+
+        } catch (geminiError: any) {
+            // Fallback to Groq streaming
+            console.warn(`[ChatService Stream] Gemini error: ${geminiError.message}. Trying Groq fallback...`);
+
+            try {
+                const groqMessages: any[] = [
+                    { role: 'system', content: systemPrompt },
+                    ...chatHistory.slice(-4).map(msg => ({
+                        role: msg.role === 'assistant' ? 'assistant' : 'user',
+                        content: msg.content
+                    })),
+                    { role: 'user', content: userPrompt }
+                ];
+
+                const stream = await groq.chat.completions.create({
+                    messages: groqMessages,
+                    model: GROQ_MODEL,
+                    temperature: 0.3,
+                    max_tokens: 4096,
+                    stream: true,
+                });
+
+                for await (const chunk of stream) {
+                    const chunkText = chunk.choices[0]?.delta?.content || '';
+                    if (chunkText) {
+                        fullResponse += chunkText;
+                        yield { type: 'chunk', content: chunkText };
+                    }
+                }
+
+                // Add fallback indicator
+                yield { type: 'chunk', content: '\n\n*(Backup: Groq Llama 3.3)*' };
+
+            } catch (groqError: any) {
+                console.error('[ChatService Stream] Both providers failed:', groqError);
+                yield { type: 'error', content: `Erro: ${groqError.message}` };
+                return;
+            }
+        }
+
+        // Extract sources
+        const sources = relevantChunks.map((chunk) => ({
+            fileName: chunk.metadata?.fileName || 'Documento desconhecido',
+            chunkIndex: chunk.chunkIndex,
+            similarity: chunk.similarity
+        }));
+
+        console.log(`[ChatService Stream] ✅ Completed (${fullResponse.length} chars)`);
+        yield { type: 'done', sources, tokenUsage };
+
+    } catch (error: any) {
+        console.error('[ChatService Stream] Error:', error);
+        yield { type: 'error', content: error.message };
     }
 }
 

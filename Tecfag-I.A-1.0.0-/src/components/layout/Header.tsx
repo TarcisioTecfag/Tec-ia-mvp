@@ -1,4 +1,5 @@
 import { Cpu, Shield, User, LogOut } from "lucide-react";
+import { NotificationBell } from "./NotificationBell";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,6 +16,9 @@ interface HeaderProps {
     name: string;
     email: string;
     role: string;
+    accessGroup?: {
+      canViewNotifications: boolean;
+    } | null;
   } | null;
   onLogout?: () => void;
 }
@@ -38,48 +42,54 @@ const Header = ({ isAdmin, user, onLogout }: HeaderProps) => {
           </div>
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-            >
-              {isAdmin ? (
-                <Shield className="w-4 h-4 text-primary" />
-              ) : (
-                <User className="w-4 h-4" />
-              )}
-              <span className="hidden sm:inline">Perfil</span>
-              <div className="hidden md:flex items-center gap-2 ml-1 pl-2 border-l border-border">
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-sm">{user?.name || "Usuário"}</span>
-              </div>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>
-              <div className="flex flex-col">
-                <span>{user?.name}</span>
-                <span className="text-xs text-muted-foreground font-normal">
-                  {user?.email}
-                </span>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-xs text-muted-foreground">
-              Tipo: {isAdmin ? "Administrador" : "Usuário"}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={onLogout}
-              className="text-destructive focus:text-destructive"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              Sair
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-2">
+          {user && (isAdmin || user.accessGroup?.canViewNotifications) && (
+            <NotificationBell />
+          )}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+              >
+                {isAdmin ? (
+                  <Shield className="w-4 h-4 text-primary" />
+                ) : (
+                  <User className="w-4 h-4" />
+                )}
+                <span className="hidden sm:inline">Perfil</span>
+                <div className="hidden md:flex items-center gap-2 ml-1 pl-2 border-l border-border">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-sm">{user?.name || "Usuário"}</span>
+                </div>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                <div className="flex flex-col">
+                  <span>{user?.name}</span>
+                  <span className="text-xs text-muted-foreground font-normal">
+                    {user?.email}
+                  </span>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-xs text-muted-foreground">
+                Tipo: {isAdmin ? "Administrador" : "Usuário"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={onLogout}
+                className="text-destructive focus:text-destructive"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Sair
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </header>
   );

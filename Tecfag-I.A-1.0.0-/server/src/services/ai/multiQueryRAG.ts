@@ -9,7 +9,7 @@
  */
 
 import { generateEmbedding } from './embeddings';
-import { searchSimilarChunks, VectorSearchResult, searchByDocument, getFullDocumentChunks } from './vectorDB';
+import { searchSimilarChunks, VectorSearchResult, searchByDocument, getFullDocumentChunks, searchByKeyword } from './vectorDB';
 import { QueryAnalysis } from './queryAnalyzer';
 
 export interface MultiQueryResult {
@@ -31,6 +31,47 @@ export async function multiQuerySearch(
     catalogId?: string
 ): Promise<MultiQueryResult> {
     const allQueries = [originalQuestion, ...analysis.suggestedQueries];
+
+    // ═══════════════════════════════════════════════════════════════
+    // PRODUCT CODE EXPANSION: Handle format variations (VSF 30S vs VSF-30S)
+    // ═══════════════════════════════════════════════════════════════
+    const productCodeRegex = /\b([a-zA-Z]{2,})[\s-]?(\d+[a-zA-Z0-9]*)\b/g;
+    let match;
+    const additionalQueries: string[] = [];
+    const keywordTargets: string[] = [];
+
+    // Reset regex state since we might reuse it
+    productCodeRegex.lastIndex = 0;
+
+    while ((match = productCodeRegex.exec(originalQuestion)) !== null) {
+        const prefix = match[1];
+        const suffix = match[2];
+        const fullMatch = match[0];
+
+        // Generate variations:
+        // 1. With hyphen: VSF-30S
+        const withHyphen = `${prefix}-${suffix}`;
+        // 2. With space: VSF 30S
+        const withSpace = `${prefix} ${suffix}`;
+        // 3. Compressed: VSF30S
+        const compressed = `${prefix}${suffix}`;
+
+        // Add variations that are different from original
+        if (withHyphen !== fullMatch && !allQueries.includes(withHyphen)) additionalQueries.push(withHyphen);
+        if (withSpace !== fullMatch && !allQueries.includes(withSpace)) additionalQueries.push(withSpace);
+        if (compressed !== fullMatch && !allQueries.includes(compressed)) additionalQueries.push(compressed);
+
+        // Add specific targets for KEYWORD SEARCH (Hybrid Search)
+        keywordTargets.push(withHyphen);
+        keywordTargets.push(withSpace);
+        keywordTargets.push(compressed);
+
+        console.log(`[MultiQueryRAG] 🔍 Detected product code "${fullMatch}". Added variations:`, additionalQueries);
+    }
+
+    // Add generated queries to execution list
+    allQueries.push(...additionalQueries);
+
     const queryBreakdown: { query: string; chunksFound: number }[] = [];
     const allChunks: VectorSearchResult[] = [];
     const seenChunkIds = new Set<string>();
@@ -71,27 +112,86 @@ export async function multiQuerySearch(
     }
 
     // ═══════════════════════════════════════════════════════════════
+    // HYBRID SEARCH: Execute Keyword Search for Product Codes
+    // ═══════════════════════════════════════════════════════════════
+    if (keywordTargets.length > 0) {
+        console.log('[MultiQueryRAG] 🚀 Executing HYBRID KEYWORD SEARCH for targets:', keywordTargets);
+        const keywordPromises = keywordTargets.map(async (kw) => {
+            return searchByKeyword(kw, 3, catalogId ? { catalogId } : undefined);
+        });
+
+        const keywordResults = await Promise.all(keywordPromises);
+
+        for (let i = 0; i < keywordTargets.length; i++) {
+            const kw = keywordTargets[i];
+            const chunks = keywordResults[i];
+
+            if (chunks.length > 0) {
+                console.log(`[MultiQueryRAG] ✅ Keyword match for "${kw}": found ${chunks.length} chunks`);
+                queryBreakdown.push({ query: `[KW] ${kw}`, chunksFound: chunks.length });
+
+                for (const chunk of chunks) {
+                    // Boost score slightly for keyword matches to ensure they appear
+                    chunk.similarity = Math.max(chunk.similarity, 0.85);
+
+                    if (!seenChunkIds.has(chunk.id)) {
+                        seenChunkIds.add(chunk.id);
+                        allChunks.push(chunk);
+                    }
+                }
+            }
+        }
+    }
+
+
+
+    // ═══════════════════════════════════════════════════════════════
     // FULL DOCUMENT RETRIEVAL - Key improvement to match NotebookLM
     // For count/aggregation queries, we need ALL data from key documents
     // ═══════════════════════════════════════════════════════════════
     if (analysis.isCountQuery || analysis.requiresFullScan) {
-        console.log('[MultiQueryRAG] 🎯 Count/Aggregation query detected - using FULL DOCUMENT RETRIEVAL');
+        console.log('[MultiQueryRAG] 🎯 Count/Aggregation query detected - checking for MASTER LIST first');
 
-        // Patterns for documents that contain catalog/inventory data
-        const catalogPatterns = [
-            'planilha',
-            'catalogo',
-            'catálogo',
-            'mapeamento',
-            'lista',
-            'inventario',
-            'inventário',
-            'todas',
-            'completo'
-        ];
+        let fullDocChunks: VectorSearchResult[] = [];
+        let usingMasterList = false;
 
-        // Retrieve ALL chunks from matching documents
-        const fullDocChunks = await getFullDocumentChunks(catalogPatterns, catalogId);
+        // 1. Try to find a "Master List" (Compilado) first to reduce context noise
+        // This is a specific optimization for this use case where a master file exists
+        if (analysis.isCountQuery) {
+            const masterPatterns = ['compilado', 'master', 'geral', 'completo'];
+            const masterChunks = await getFullDocumentChunks(masterPatterns, catalogId);
+
+            // Check if we actually found a master list (roughly check chunk count or if docs found)
+            if (masterChunks.length > 0 && masterChunks.length < 100) { // arbitrary sanity check
+                console.log(`[MultiQueryRAG] ✅ MASTER LIST found (${masterChunks.length} chunks). Using it exclusively for count.`);
+                fullDocChunks = masterChunks;
+                usingMasterList = true;
+            }
+        }
+
+        // 2. If no master list found (or not count query), do full scan
+        if (!usingMasterList) {
+            console.log('[MultiQueryRAG] No unique master list found or needed. Doing FULL SCAN.');
+
+            // Patterns for documents that contain catalog/inventory data
+            // IF it's a global count query, we want EVERYTHING (machine manuals, lists, etc)
+            const catalogPatterns = analysis.isCountQuery
+                ? [] // Empty array = fetch ALL documents
+                : [
+                    'planilha',
+                    'catalogo',
+                    'catálogo',
+                    'mapeamento',
+                    'lista',
+                    'inventario',
+                    'inventário',
+                    'todas',
+                    'completo'
+                ];
+
+            // Retrieve ALL chunks from matching documents
+            fullDocChunks = await getFullDocumentChunks(catalogPatterns, catalogId);
+        }
 
         console.log(`[MultiQueryRAG] Retrieved ${fullDocChunks.length} chunks via full document retrieval`);
 
@@ -102,9 +202,43 @@ export async function multiQuerySearch(
             }
         }
 
-        // Also fetch document-level summaries for other documents
-        const docChunks = await fetchDocumentLevelData(catalogId);
-        for (const chunk of docChunks) {
+        // Only fetch document summaries if we ARE NOT using the master list
+        // (If we are using master list, we want to stay focused on it)
+        if (!usingMasterList) {
+            const docChunks = await fetchDocumentLevelData(catalogId);
+            for (const chunk of docChunks) {
+                if (!seenChunkIds.has(chunk.id)) {
+                    seenChunkIds.add(chunk.id);
+                    allChunks.push(chunk);
+                }
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // RECOMMENDATION QUERIES - Ensure document diversity for multi-options
+    // ═══════════════════════════════════════════════════════════════
+    if (analysis.type === 'recommendation') {
+        console.log('[MultiQueryRAG] 🎯 Recommendation query detected - ensuring document DIVERSITY');
+
+        // Patterns for machine/product documentation
+        const productPatterns = [
+            'AFPP',        // Empacotadoras
+            'Diamond',     // Diamond pouches
+            'envasadora',
+            'seladora',
+            'dosadora',
+            'empacotadora',
+            'pouch',
+            'sachê',
+            'sache'
+        ];
+
+        // Retrieve chunks from machine-related documents
+        const productChunks = await getFullDocumentChunks(productPatterns, catalogId);
+        console.log(`[MultiQueryRAG] Retrieved ${productChunks.length} chunks from product documents`);
+
+        for (const chunk of productChunks) {
             if (!seenChunkIds.has(chunk.id)) {
                 seenChunkIds.add(chunk.id);
                 allChunks.push(chunk);
@@ -114,6 +248,9 @@ export async function multiQuerySearch(
 
     // For count queries, don't limit chunks - we need ALL data for accurate counting
     // This is key to matching NotebookLM's behavior
+    // HOWEVER: We need to limit to avoid overwhelming the LLM (max ~40K tokens input)
+    // UPDATE: Increased to 3000 chunks to support FULL database context (approx 750k tokens)
+    const MAX_CHUNKS_FOR_AGGREGATION = 3000; // Effectively unlimited for current DB size (210 chunks)
     let sortedChunks: VectorSearchResult[];
 
     if (analysis.isCountQuery) {
@@ -125,7 +262,14 @@ export async function multiQuerySearch(
             }
             return a.chunkIndex - b.chunkIndex;
         });
-        console.log(`[MultiQueryRAG] Count query: keeping ALL ${sortedChunks.length} chunks (no limit)`);
+
+        // Apply limit to avoid LLM overwhelm
+        if (sortedChunks.length > MAX_CHUNKS_FOR_AGGREGATION) {
+            console.log(`[MultiQueryRAG] ⚠️ Count query: limiting from ${sortedChunks.length} to ${MAX_CHUNKS_FOR_AGGREGATION} chunks (LLM limit)`);
+            sortedChunks = sortedChunks.slice(0, MAX_CHUNKS_FOR_AGGREGATION);
+        } else {
+            console.log(`[MultiQueryRAG] Count query: keeping ALL ${sortedChunks.length} chunks`);
+        }
     } else {
         // For other queries, limit by contextSize and sort by similarity
         sortedChunks = allChunks

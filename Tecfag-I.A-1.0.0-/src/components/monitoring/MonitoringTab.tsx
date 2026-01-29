@@ -7,13 +7,14 @@ import UserStatusCard from "./UserStatusCard";
 import UserArchivedChats from "./UserArchivedChats";
 import StatisticsPanel from "./StatisticsPanel";
 import CostsPanel from "./CostsPanel";
+import { FeedbackPanel } from "./FeedbackPanel";
 
 const MonitoringTab = () => {
     const [users, setUsers] = useState<UserStatus[]>([]);
     const [archivedChatsGroups, setArchivedChatsGroups] = useState<UserArchivedChatsGroup[]>([]);
     const [statistics, setStatistics] = useState<QuestionStatistics | null>(null);
     const [loading, setLoading] = useState(true);
-    const [activeSection, setActiveSection] = useState<"users" | "chats" | "stats" | "costs">("users");
+    const [activeSection, setActiveSection] = useState<"users" | "chats" | "stats" | "costs" | "feedback">("users");
 
     useEffect(() => {
         loadData();
@@ -99,6 +100,16 @@ const MonitoringTab = () => {
                         <DollarSign className="w-4 h-4" />
                         Custos
                     </button>
+                    <button
+                        onClick={() => setActiveSection("feedback")}
+                        className={`px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2 ${activeSection === "feedback"
+                            ? "bg-primary/10 text-primary border-b-2 border-primary"
+                            : "text-muted-foreground hover:text-foreground"
+                            }`}
+                    >
+                        <MessageSquare className="w-4 h-4" />
+                        Feedback
+                    </button>
                 </div>
 
                 {loading ? (
@@ -174,6 +185,11 @@ const MonitoringTab = () => {
                         {/* Costs Section */}
                         {activeSection === "costs" && (
                             <CostsPanel />
+                        )}
+
+                        {/* Feedback Section */}
+                        {activeSection === "feedback" && (
+                            <FeedbackPanel />
                         )}
                     </>
                 )}

@@ -1,12 +1,25 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useHeartbeat } from '@/hooks/useHeartbeat';
 
+interface AccessGroup {
+    id: string;
+    name: string;
+    canViewChat: boolean;
+    canViewMindMap: boolean;
+    canViewCatalog: boolean;
+    canViewUsers: boolean;
+    canViewMonitoring: boolean;
+    canViewDocuments: boolean;
+    canViewSettings: boolean;
+}
+
 interface User {
     id: string;
     email: string;
     name: string;
     role: 'USER' | 'ADMIN';
     mustChangePassword?: boolean;
+    accessGroup?: AccessGroup | null;
 }
 
 interface AuthContextType {
@@ -20,6 +33,8 @@ interface AuthContextType {
     logout: () => void;
     hideWelcomeAnimation: () => void;
     refreshUser: () => Promise<void>;
+    // Permission checks based on access group
+    canView: (module: 'chat' | 'mindmap' | 'catalog' | 'users' | 'monitoring' | 'documents' | 'settings') => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -130,6 +145,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     }, [token]);
 
+    // Check if user can view a specific module based on role and access group
+    const canView = useCallback((module: 'chat' | 'mindmap' | 'catalog' | 'users' | 'monitoring' | 'documents' | 'settings'): boolean => {
+        // Admins can view everything
+        if (user?.role === 'ADMIN') {
+            return true;
+        }
+
+        // If no access group, allow only basic modules (chat, mindmap, catalog)
+        if (!user?.accessGroup) {
+            return ['chat', 'mindmap', 'catalog'].includes(module);
+        }
+
+        // Check specific permission from access group
+        const permissionMap: Record<string, keyof AccessGroup> = {
+            'chat': 'canViewChat',
+            'mindmap': 'canViewMindMap',
+            'catalog': 'canViewCatalog',
+            'users': 'canViewUsers',
+            'monitoring': 'canViewMonitoring',
+            'documents': 'canViewDocuments',
+            'settings': 'canViewSettings',
+        };
+
+        const permission = permissionMap[module];
+        return permission ? Boolean(user.accessGroup[permission]) : false;
+    }, [user]);
+
     const value = {
         user,
         token,
@@ -141,6 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         hideWelcomeAnimation,
         refreshUser,
+        canView,
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

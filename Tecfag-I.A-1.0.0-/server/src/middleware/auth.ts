@@ -12,6 +12,18 @@ export interface AuthRequest extends Request {
         department?: string | null;
         technicalLevel?: string | null;
         communicationStyle?: string | null;
+        accessGroup?: {
+            id: string;
+            name: string;
+            canViewChat: boolean;
+            canViewMindMap: boolean;
+            canViewCatalog: boolean;
+            canViewUsers: boolean;
+            canViewMonitoring: boolean;
+            canViewDocuments: boolean;
+            canViewSettings: boolean;
+            canViewNotifications: boolean;
+        } | null;
     };
 }
 
@@ -43,7 +55,21 @@ export const authenticate = async (
                 jobTitle: true,
                 department: true,
                 technicalLevel: true,
-                communicationStyle: true
+                communicationStyle: true,
+                accessGroup: {
+                    select: {
+                        id: true,
+                        name: true,
+                        canViewChat: true,
+                        canViewMindMap: true,
+                        canViewCatalog: true,
+                        canViewUsers: true,
+                        canViewMonitoring: true,
+                        canViewDocuments: true,
+                        canViewSettings: true,
+                        canViewNotifications: true,
+                    }
+                }
             },
         });
 

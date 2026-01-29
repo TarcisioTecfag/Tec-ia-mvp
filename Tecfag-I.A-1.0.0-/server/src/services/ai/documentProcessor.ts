@@ -3,6 +3,9 @@ import { extractText } from './textExtractor';
 import { chunkText, estimateTokens } from './chunking';
 import { generateEmbeddingsBatch } from './embeddings';
 import { storeChunks } from './vectorDB';
+import notificationService from '../notificationService';
+import * as cacheService from './cacheService';
+import * as path from 'path';
 
 const prisma = new PrismaClient();
 
@@ -25,22 +28,53 @@ export async function processDocument(documentId: string): Promise<void> {
         // Update progress
         await updateProgress(documentId, 10);
 
-        // 2. Extract text from file
-        console.log(`[DocumentProcessor] Extracting text from: ${document.fileName}`);
-        const { text, metadata } = await extractText(document.filePath, document.fileType);
+        // 2. Extract text from file (OR handle images)
+        console.log(`[DocumentProcessor] Processing file: ${document.fileName} (${document.fileType})`);
 
-        if (!text || text.trim().length === 0) {
-            throw new Error('No text extracted from document');
+        let textWithContext = '';
+        let metadata: any = {};
+
+        const isImage = document.fileType.startsWith('image/');
+        // Extract stored filename from path
+        const storedFileName = path.basename(document.filePath);
+
+        if (isImage) {
+            console.log(`[DocumentProcessor] 🖼️ Image detected. Skipping text extraction.`);
+            // Para imagens, criamos um "texto" sintético que descreve a imagem baseado no nome do arquivo
+            // Isso permite que a busca semântica encontre a imagem quando o usuário perguntar sobre o equipamento
+            textWithContext = `[IMAGEM] Arquivo: ${document.fileName}\n\nEsta é uma imagem referente ao equipamento ou documento: ${document.fileName}.`;
+            metadata = {
+                isImage: true,
+                fileName: document.fileName,
+                storedFileName: storedFileName
+            };
+        } else {
+            console.log(`[DocumentProcessor] Extracting text from: ${document.fileName}`);
+            const result = await extractText(document.filePath, document.fileType);
+
+            if (!result.text || result.text.trim().length === 0) {
+                throw new Error('No text extracted from document');
+            }
+
+            // PREPEND FILENAME to text to ensure the AI knows which document this is
+            textWithContext = `Arquivo: ${document.fileName}\n\n${result.text}`;
+            metadata = {
+                ...result.metadata,
+                storedFileName: storedFileName
+            };
         }
 
         await updateProgress(documentId, 30);
 
         // 3. Chunk the text
-        console.log(`[DocumentProcessor] Chunking text (${text.length} characters)`);
-        const chunks = chunkText(text, {
-            chunkSize: 800,
-            overlap: 150,
-            strategy: 'semantic'
+        console.log(`[DocumentProcessor] Chunking text (${textWithContext.length} characters)`);
+        // Use 'semantic' strategy for the Compilado file as it is a JSON dump and product-aware splitting fails
+        const strategy = storedFileName.includes('Compilado') ? 'semantic' : 'product-aware';
+
+        const chunks = chunkText(textWithContext, {
+            chunkSize: 3000,
+            overlap: 500,
+            strategy: strategy
         });
 
         console.log(`[DocumentProcessor] Created ${chunks.length} chunks`);
@@ -64,6 +98,7 @@ export async function processDocument(documentId: string): Promise<void> {
                     fileName: document.fileName,
                     fileType: document.fileType,
                     catalogId: document.catalogId,
+                    storedFileName: storedFileName, // Ensure this is saved
                     ...metadata
                 }
             }))
@@ -90,8 +125,27 @@ export async function processDocument(documentId: string): Promise<void> {
         console.log(`  - Chunks: ${chunks.length}`);
         console.log(`  - Total tokens: ${totalTokens}`);
 
+        // Notificar admins sobre documento processado com sucesso
+        await notificationService.broadcastToAdmins(
+            'document',
+            '📄 Documento Indexado',
+            `"${document.fileName}" foi processado com sucesso (${chunks.length} chunks, ${totalTokens} tokens)`,
+            'success',
+            { documentId, fileName: document.fileName, chunks: chunks.length, tokens: totalTokens }
+        );
+
+        // INVALIDAR CACHE: Limpar cache de respostas para garantir que novas perguntas encontrem este documento
+        // Isso resolve o problema onde a IA "lembra" que não sabia a resposta
+        await cacheService.clearAllCache();
+        console.log(`[DocumentProcessor] 🧹 Cache cleared after indexing document: ${document.fileName}`);
+
     } catch (error: any) {
         console.error(`[DocumentProcessor] ❌ Error processing document ${documentId}:`, error);
+
+        // Get document info for notification
+        const document = await prisma.document.findUnique({
+            where: { id: documentId }
+        });
 
         // Update document with error
         await prisma.document.update({
@@ -102,6 +156,15 @@ export async function processDocument(documentId: string): Promise<void> {
                 processingProgress: 0
             }
         });
+
+        // Notificar admins sobre erro no processamento
+        await notificationService.broadcastToAdmins(
+            'document',
+            '❌ Erro ao Processar Documento',
+            `Falha ao indexar "${document?.fileName || 'Documento'}": ${error.message}`,
+            'error',
+            { documentId, error: error.message }
+        );
 
         throw error;
     }

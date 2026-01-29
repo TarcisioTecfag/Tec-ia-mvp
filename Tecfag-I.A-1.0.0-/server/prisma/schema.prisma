@@ -31,10 +31,14 @@ model User {
   accessGroupId String?
   accessGroup   AccessGroup? @relation(fields: [accessGroupId], references: [id], onDelete: SetNull)
 
-  chatMessages  ChatMessage[]
-  archivedChats ArchivedChat[]
-  chatFolders   ChatFolder[]
-  tokenUsages   TokenUsage[]
+  chatMessages         ChatMessage[]
+  archivedChats        ArchivedChat[]
+  chatFolders          ChatFolder[]
+  tokenUsages          TokenUsage[]
+  messageFeedbacks     MessageFeedback[]
+  chatSessionContext   ChatSessionContext?
+  notificationSettings NotificationSettings?
+  notifications        Notification[]
 }
 
 // Grupos de acesso com permissões por módulo
@@ -51,11 +55,69 @@ model AccessGroup {
   canViewMonitoring  Boolean @default(false)
   canViewDocuments   Boolean @default(false)
   canViewSettings    Boolean @default(false)
+  canViewNotifications Boolean @default(false)
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
   users       User[]
+}
+
+// Feedback de usuários sobre respostas da IA
+model MessageFeedback {
+  id            String   @id @default(uuid())
+  
+  // Mensagem avaliada
+  messageId     String?  // ID da ChatMessage se ainda existir
+  messageContent String  // Cópia do conteúdo (para histórico)
+  queryContent   String  // Pergunta que gerou a resposta
+  
+  // Feedback
+  rating        String   // "positive" | "negative"
+  category      String?  // "incorrect" | "incomplete" | "confusing" | "too_long" | "other"
+  comment       String?
+  
+  // Contexto
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Metadados
+  model         String?  // Qual modelo gerou a resposta
+  catalogId     String?
+  
+  createdAt     DateTime @default(now())
+  
+  @@index([rating])
+  @@index([category])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Contexto de sessão de chat para memória inteligente
+model ChatSessionContext {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Resumo progressivo da conversa
+  contextSummary    String?   // Resumo condensado das últimas N mensagens
+  
+  // Entidades mencionadas (JSON)
+  mentionedEntities String?   // {"machines": ["Seladora X"], "topics": ["manutenção"]}
+  
+  // Informações já fornecidas (para evitar repetição)
+  providedInfo      String?   // JSON com hashes de informações já dadas
+  
+  // Preferências detectadas durante conversa
+  detectedPreferences String? // {"prefersTables": true, "technicalLevel": "advanced"}
+  
+  // Controle de mensagens
+  messageCount      Int      @default(0)
+  
+  lastUpdated       DateTime @default(now())
+  createdAt         DateTime @default(now())
+  
+  @@index([userId])
 }
 
 // Registro de uso de tokens por solicitação
@@ -203,6 +265,11 @@ model DocumentFolder {
   order     Int      @default(0)
   createdAt DateTime @default(now())
 
+  // Hierarquia de pastas
+  parentId  String?
+  parent    DocumentFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children  DocumentFolder[] @relation("FolderHierarchy")
+
   documents Document[]
 }
 
@@ -263,5 +330,100 @@ model DocumentChunk {
   createdAt  DateTime @default(now())
 
   @@index([documentId])
+}
+
+// ========== CACHE INTELIGENTE PARA RAG ==========
+
+// Cache de queries para respostas RAG
+model QueryCache {
+  id             String   @id @default(uuid())
+  
+  // Query original e identificadores
+  queryText      String
+  queryHash      String   @unique  // Hash MD5 para exact match
+  queryEmbedding String             // Embedding para semantic match
+  
+  // Resposta cacheada
+  response       String
+  sources        String?            // JSON com fontes usadas
+  
+  // Metadados de uso
+  hitCount       Int      @default(0)
+  catalogId      String?            // Escopo do cache
+  
+  // Invalidação - IDs dos documentos usados na resposta
+  documentIds    String             // JSON array de IDs de documentos
+  
+  // Timestamps
+  createdAt      DateTime @default(now())
+  lastUsed       DateTime @default(now())
+  expiresAt      DateTime
+  
+  @@index([queryHash])
+  @@index([catalogId])
+  @@index([expiresAt])
+}
+
+// Cache de embeddings para queries
+model EmbeddingCache {
+  id         String   @id @default(uuid())
+  textHash   String   @unique  // Hash MD5 do texto
+  embedding  String             // Embedding em JSON
+  createdAt  DateTime @default(now())
+  
+  @@index([textHash])
+}
+
+// ========== SISTEMA DE NOTIFICAÇÕES ==========
+
+// Configurações de notificação do usuário
+model NotificationSettings {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Tipos de notificação habilitados
+  systemAlerts          Boolean  @default(true)   // Erros de sistema, status IA
+  userAlerts            Boolean  @default(true)   // Novos usuários, logins falhos
+  documentAlerts        Boolean  @default(true)   // Uploads, novos docs
+  chatAlerts            Boolean  @default(true)   // Feedbacks negativos
+  
+  // Preferências de entrega
+  inAppEnabled          Boolean  @default(true)
+  emailEnabled          Boolean  @default(false)  // Para implementação futura
+  
+  // Frequência
+  frequency             String   @default("realtime") // realtime | daily | weekly
+  
+  // Horário de silêncio
+  quietHoursEnabled     Boolean  @default(false)
+  quietHoursStart       String?  // "22:00"
+  quietHoursEnd         String?  // "08:00"
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Notificações individuais
+model Notification {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type        String    // system | user | document | chat
+  category    String    // error | warning | info | success
+  title       String
+  message     String
+  metadata    String?   // JSON com dados adicionais
+  
+  isRead      Boolean   @default(false)
+  readAt      DateTime?
+  
+  createdAt   DateTime  @default(now())
+  
+  @@index([userId])
+  @@index([isRead])
+  @@index([type])
+  @@index([createdAt])
 }
 

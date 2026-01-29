@@ -5,6 +5,7 @@ import fs from 'fs/promises';
 import { PrismaClient } from '@prisma/client';
 import { processDocument, deleteDocument, reindexDocument } from '../services/ai/documentProcessor';
 import { authenticate, adminOnly, AuthRequest } from '../middleware/auth';
+import * as cacheService from '../services/ai/cacheService';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -45,7 +46,10 @@ const upload = multer({
         const allowedTypes = [
             'application/pdf',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'text/plain'
+            'text/plain',
+            'image/jpeg',
+            'image/png',
+            'image/webp'
         ];
 
         console.log(`[Upload] Checking file: ${file.originalname} (${file.mimetype})`);
@@ -53,7 +57,7 @@ const upload = multer({
             cb(null, true);
         } else {
             console.error(`[Upload] Invalid file type: ${file.mimetype}`);
-            cb(new Error('Tipo de arquivo não suportado. Use PDF, DOCX ou TXT.'));
+            cb(new Error('Tipo de arquivo não suportado. Use PDF, DOCX, TXT ou Imagens (JPG, PNG, WEBP).'));
         }
     }
 });
@@ -241,6 +245,10 @@ router.delete('/:documentId', adminOnly, async (req: AuthRequest, res: Response)
         // Delete from database (will cascade to chunks)
         await deleteDocument(documentId);
 
+        // Invalidate cache for this document
+        await cacheService.invalidateCacheByDocument(documentId);
+        console.log(`[Documents] Cache invalidated for deleted document: ${documentId}`);
+
         res.json({ success: true, message: 'Documento deletado com sucesso' });
 
     } catch (error: any) {
@@ -268,6 +276,10 @@ router.post('/:documentId/reindex', adminOnly, async (req: AuthRequest, res: Res
         reindexDocument(documentId).catch(error => {
             console.error(`Failed to reindex document ${documentId}:`, error);
         });
+
+        // Invalidate cache for this document (data may have changed)
+        await cacheService.invalidateCacheByDocument(documentId);
+        console.log(`[Documents] Cache invalidated for reindexed document: ${documentId}`);
 
         res.json({
             success: true,
@@ -355,21 +367,33 @@ router.get('/:documentId/status', async (req: AuthRequest, res: Response) => {
  */
 router.post('/folders', adminOnly, async (req: AuthRequest, res: Response) => {
     try {
-        const { name } = req.body;
+        const { name, parentId } = req.body;
 
         if (!name || name.trim().length === 0) {
             return res.status(400).json({ error: 'Nome da pasta não pode estar vazio' });
         }
 
-        // Get current max order
+        // Verify parent folder exists if provided
+        if (parentId) {
+            const parentFolder = await prisma.documentFolder.findUnique({
+                where: { id: parentId }
+            });
+            if (!parentFolder) {
+                return res.status(404).json({ error: 'Pasta pai não encontrada' });
+            }
+        }
+
+        // Get current max order for siblings (same parent)
         const maxOrderFolder = await prisma.documentFolder.findFirst({
+            where: { parentId: parentId || null },
             orderBy: { order: 'desc' }
         });
 
         const folder = await prisma.documentFolder.create({
             data: {
                 name: name.trim(),
-                order: (maxOrderFolder?.order || 0) + 1
+                order: (maxOrderFolder?.order || 0) + 1,
+                parentId: parentId || null
             }
         });
 
@@ -377,6 +401,7 @@ router.post('/folders', adminOnly, async (req: AuthRequest, res: Response) => {
             id: folder.id,
             name: folder.name,
             order: folder.order,
+            parentId: folder.parentId,
             createdAt: folder.createdAt,
             documentCount: 0
         });
@@ -395,7 +420,7 @@ router.get('/folders', adminOnly, async (req: AuthRequest, res: Response) => {
             orderBy: { order: 'asc' },
             include: {
                 _count: {
-                    select: { documents: true }
+                    select: { documents: true, children: true }
                 }
             }
         });
@@ -405,7 +430,9 @@ router.get('/folders', adminOnly, async (req: AuthRequest, res: Response) => {
                 id: f.id,
                 name: f.name,
                 order: f.order,
+                parentId: f.parentId,
                 documentCount: f._count.documents,
+                childrenCount: f._count.children,
                 createdAt: f.createdAt
             }))
         });

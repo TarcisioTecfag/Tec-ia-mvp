@@ -1,9 +1,9 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Settings, MessageSquare, Table, List, Check } from "lucide-react";
+import { Settings, MessageSquare, Table, List, Check, Paperclip } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
-export type ChatFunction = "normal" | "table" | "list";
+export type ChatFunction = "normal" | "table" | "list" | "attachment";
 
 interface ChatFunctionSelectorProps {
     currentFunction: ChatFunction;
@@ -31,6 +31,13 @@ const functions: { id: ChatFunction; label: string; icon: any; color: string; de
         icon: List,
         color: "text-orange-400",
         description: "Organiza em tópicos"
+    },
+    {
+        id: "attachment",
+        label: "Anexo",
+        icon: Paperclip,
+        color: "text-green-400",
+        description: "Inclui imagens relacionadas"
     },
 ];
 

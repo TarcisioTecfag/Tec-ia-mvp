@@ -200,9 +200,12 @@ export async function getFullDocumentChunks(
         fileName: { contains: pattern }
     }));
 
-    const whereClause: any = {
-        OR: patternConditions
-    };
+    // If patterns provided, use OR condition. If empty, fetch ALL docs (no filter)
+    const whereClause: any = {};
+
+    if (patternConditions.length > 0) {
+        whereClause.OR = patternConditions;
+    }
 
     if (catalogId) {
         whereClause.catalogId = catalogId;
@@ -246,3 +249,92 @@ export async function getFullDocumentChunks(
     console.log(`[VectorDB] Total chunks retrieved for aggregation: ${results.length}`);
     return results;
 }
+
+/**
+ * Garante diversidade de documentos nos resultados
+ * Seleciona os melhores chunks de pelo menos N documentos diferentes
+ * Usado para queries de recomendação onde queremos múltiplas opções
+ */
+export function ensureDocumentDiversity(
+    chunks: VectorSearchResult[],
+    minDocuments: number = 5,
+    maxChunksPerDoc: number = 3
+): VectorSearchResult[] {
+    const byDocument = new Map<string, VectorSearchResult[]>();
+
+    // Agrupar por documento
+    for (const chunk of chunks) {
+        const docId = chunk.documentId;
+        if (!byDocument.has(docId)) {
+            byDocument.set(docId, []);
+        }
+        byDocument.get(docId)!.push(chunk);
+    }
+
+    console.log(`[VectorDB] ensureDocumentDiversity: ${byDocument.size} unique documents found`);
+
+    const result: VectorSearchResult[] = [];
+
+    // Pegar até maxChunksPerDoc de cada documento, priorizando por similarity
+    for (const [docId, docChunks] of byDocument) {
+        const topChunks = docChunks
+            .sort((a, b) => b.similarity - a.similarity)
+            .slice(0, maxChunksPerDoc);
+        result.push(...topChunks);
+    }
+
+    // Ordenar resultado final por similarity
+    return result.sort((a, b) => b.similarity - a.similarity);
+}
+
+/**
+ * Perform keyword-based search for exact matches (SQL LIKE)
+ * Essential for product codes like "VSF-30S" that embeddings might miss
+ */
+export async function searchByKeyword(
+    keyword: string,
+    limit: number = 5,
+    filters?: {
+        documentId?: string;
+        catalogId?: string;
+    }
+): Promise<VectorSearchResult[]> {
+    const whereClause: any = {
+        content: {
+            contains: keyword
+        }
+    };
+
+    if (filters?.documentId) {
+        whereClause.documentId = filters.documentId;
+    }
+
+    if (filters?.catalogId) {
+        whereClause.document = {
+            catalogId: filters.catalogId
+        };
+    }
+
+    const chunks = await prisma.documentChunk.findMany({
+        where: whereClause,
+        take: limit,
+        include: {
+            document: true
+        }
+    });
+
+    console.log(`[VectorDB] Keyword search for "${keyword}": found ${chunks.length} chunks`);
+
+    return chunks.map(chunk => ({
+        id: chunk.id,
+        content: chunk.content,
+        // Give keyword matches a boosted artificial similarity score
+        // to ensure they appear high in results but below perfect semantic matches
+        similarity: 0.85,
+        metadata: chunk.metadata ? JSON.parse(chunk.metadata) : {},
+        documentId: chunk.documentId,
+        chunkIndex: chunk.chunkIndex
+    }));
+}
+
+

@@ -460,6 +460,7 @@ const UsersTab = () => {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="USER">Operador</SelectItem>
+                                        <SelectItem value="ADMIN">Administrador</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>

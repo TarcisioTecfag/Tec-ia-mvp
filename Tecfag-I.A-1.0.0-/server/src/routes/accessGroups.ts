@@ -38,6 +38,36 @@ const updateUsersSchema = z.object({
     userIds: z.array(z.string()),
 });
 
+// GET /api/access-groups/meta/available-users - Get all users for assignment
+// IMPORTANT: This route must be defined BEFORE /:id to prevent 'meta' being matched as an ID
+accessGroupsRouter.get('/meta/available-users', async (req: AuthRequest, res: Response) => {
+    try {
+        const users = await prisma.user.findMany({
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+                accessGroupId: true,
+                accessGroup: {
+                    select: {
+                        id: true,
+                        name: true,
+                    }
+                }
+            },
+            orderBy: {
+                name: 'asc',
+            },
+        });
+
+        res.json({ users });
+    } catch (error) {
+        console.error('Error fetching available users:', error);
+        res.status(500).json({ error: 'Erro ao buscar usuários disponíveis' });
+    }
+});
+
 // GET /api/access-groups - List all groups
 accessGroupsRouter.get('/', async (req: AuthRequest, res: Response) => {
     try {
@@ -272,34 +302,5 @@ accessGroupsRouter.put('/:id/users', async (req: AuthRequest, res: Response) => 
         }
         console.error('Error updating users in access group:', error);
         res.status(500).json({ error: 'Erro ao atualizar usuários do grupo' });
-    }
-});
-
-// GET /api/access-groups/available-users - Get all users for assignment
-accessGroupsRouter.get('/meta/available-users', async (req: AuthRequest, res: Response) => {
-    try {
-        const users = await prisma.user.findMany({
-            select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-                accessGroupId: true,
-                accessGroup: {
-                    select: {
-                        id: true,
-                        name: true,
-                    }
-                }
-            },
-            orderBy: {
-                name: 'asc',
-            },
-        });
-
-        res.json({ users });
-    } catch (error) {
-        console.error('Error fetching available users:', error);
-        res.status(500).json({ error: 'Erro ao buscar usuários disponíveis' });
     }
 });

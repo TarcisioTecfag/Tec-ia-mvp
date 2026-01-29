@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../config/database.js';
 import { authenticate, AuthRequest } from '../middleware/auth.js';
 import { aiService } from '../services/aiService.js';
+import * as sessionMemory from '../services/ai/sessionMemory.js';
 
 export const chatRouter = Router();
 
@@ -107,10 +108,49 @@ chatRouter.delete('/history', authenticate, async (req: AuthRequest, res: Respon
             where: { userId },
         });
 
+        // Also clear session context
+        try {
+            await sessionMemory.clearSession(userId);
+        } catch (e) { /* ignore */ }
+
         res.json({ message: 'Histórico limpo com sucesso' });
     } catch (error) {
         console.error('Clear chat history error:', error);
         res.status(500).json({ error: 'Erro ao limpar histórico' });
+    }
+});
+
+// POST clear session context only (without clearing chat messages)
+chatRouter.post('/clear-context', authenticate, async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user!.id;
+
+        await sessionMemory.clearSession(userId);
+
+        res.json({ message: 'Contexto de sessão limpo com sucesso' });
+    } catch (error) {
+        console.error('Clear session context error:', error);
+        res.status(500).json({ error: 'Erro ao limpar contexto de sessão' });
+    }
+});
+
+// GET current session context (for debugging)
+chatRouter.get('/session-context', authenticate, async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user!.id;
+
+        const context = await sessionMemory.getOrCreateSessionContext(userId);
+
+        res.json({
+            messageCount: context.messageCount,
+            mentionedEntities: context.mentionedEntities,
+            detectedPreferences: context.detectedPreferences,
+            hasContextSummary: !!context.contextSummary,
+            providedInfoCount: context.providedInfo.length,
+        });
+    } catch (error) {
+        console.error('Get session context error:', error);
+        res.status(500).json({ error: 'Erro ao buscar contexto de sessão' });
     }
 });
 
@@ -155,6 +195,14 @@ chatRouter.post('/archive', authenticate, async (req: AuthRequest, res: Response
         await prisma.chatMessage.deleteMany({
             where: { userId },
         });
+
+        // Clear session context (reset conversation memory)
+        try {
+            await sessionMemory.clearSession(userId);
+            console.log(`[Archive Chat] Session context cleared for user ${userId}`);
+        } catch (ctxError: any) {
+            console.warn(`[Archive Chat] Failed to clear session context: ${ctxError.message}`);
+        }
 
         res.json({
             id: archivedChat.id,
@@ -596,12 +644,12 @@ chatRouter.put('/archives/:id/pin', authenticate, async (req: AuthRequest, res: 
 
 // ========== RAG AI ENDPOINTS ==========
 
-import { answerQuestion, generateSuggestedQuestions } from '../services/ai/chatService';
+import { answerQuestion, answerQuestionStream, generateSuggestedQuestions } from '../services/ai/chatService';
 
 // POST send message with RAG (document-based responses)
 chatRouter.post('/rag', authenticate, async (req: AuthRequest, res: Response) => {
     try {
-        const { content, catalogId, mode, isTableMode } = req.body;
+        const { content, catalogId, mode, isTableMode, isAttachmentMode } = req.body;
         const userId = req.user!.id;
 
         if (!content || content.trim().length === 0) {
@@ -645,12 +693,14 @@ chatRouter.post('/rag', authenticate, async (req: AuthRequest, res: Response) =>
             mode,
             isTableMode,
             user ? {
+                userId,  // Enable session context tracking
                 name: user.name,
                 jobTitle: user.jobTitle || undefined,
                 department: user.department || undefined,
                 technicalLevel: user.technicalLevel || undefined,
                 communicationStyle: user.communicationStyle || undefined,
-            } : undefined
+            } : { userId },
+            isAttachmentMode // Pass attachment mode flag
         );
 
         // Save token usage to database
@@ -704,6 +754,133 @@ chatRouter.post('/rag', authenticate, async (req: AuthRequest, res: Response) =>
     } catch (error: any) {
         console.error('RAG chat error:', error);
         res.status(500).json({ error: error.message || 'Erro ao processar mensagem' });
+    }
+});
+
+// POST send message with RAG streaming (Server-Sent Events)
+// POST send message with RAG streaming (Server-Sent Events)
+chatRouter.post('/rag/stream', authenticate, async (req: AuthRequest, res: Response) => {
+    const { content, catalogId, mode, isTableMode, isAttachmentMode } = req.body;
+    const userId = req.user!.id;
+
+    if (!content || content.trim().length === 0) {
+        res.status(400).json({ error: 'Mensagem não pode estar vazia' });
+        return;
+    }
+
+    // Set SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+    res.flushHeaders();
+
+    try {
+        // Get recent chat history for context
+        const recentMessages = await prisma.chatMessage.findMany({
+            where: { userId },
+            orderBy: { createdAt: 'desc' },
+            take: 6,
+            select: { role: true, content: true },
+        });
+
+        const chatHistory = recentMessages.reverse().map(msg => ({
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content
+        }));
+
+        // Fetch user profile
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                name: true,
+                jobTitle: true,
+                department: true,
+                technicalLevel: true,
+                communicationStyle: true,
+            }
+        });
+
+        // Save user message immediately
+        const userMessage = await prisma.chatMessage.create({
+            data: { userId, role: 'user', content },
+        });
+
+        // Send user message confirmation
+        res.write(`data: ${JSON.stringify({ type: 'user_message', id: userMessage.id })}\n\n`);
+
+        let fullResponse = '';
+        let sources: any[] = [];
+        let tokenUsage: any = undefined;
+
+        // Stream response
+        const stream = answerQuestionStream(
+            content,
+            catalogId,
+            chatHistory,
+            mode,
+            isTableMode,
+            user ? {
+                userId,  // Enable session context tracking
+                name: user.name,
+                jobTitle: user.jobTitle || undefined,
+                department: user.department || undefined,
+                technicalLevel: user.technicalLevel || undefined,
+                communicationStyle: user.communicationStyle || undefined,
+            } : { userId },  // Even without user profile, include userId for session tracking
+            isAttachmentMode // Pass attachment mode flag
+        );
+
+        for await (const event of stream) {
+            if (event.type === 'chunk') {
+                fullResponse += event.content || '';
+                res.write(`data: ${JSON.stringify({ type: 'chunk', content: event.content })}\n\n`);
+                // Force flush to ensure chunk is sent immediately
+                if (typeof (res as any).flush === 'function') {
+                    (res as any).flush();
+                }
+            } else if (event.type === 'done') {
+                sources = event.sources || [];
+                tokenUsage = event.tokenUsage;
+            } else if (event.type === 'error') {
+                res.write(`data: ${JSON.stringify({ type: 'error', content: event.content })}\n\n`);
+                res.end();
+                return;
+            }
+        }
+
+        // Save assistant message
+        const assistantMessage = await prisma.chatMessage.create({
+            data: { userId, role: 'assistant', content: fullResponse },
+        });
+
+        // Save token usage
+        if (tokenUsage) {
+            await prisma.tokenUsage.create({
+                data: {
+                    userId,
+                    inputTokens: tokenUsage.inputTokens,
+                    outputTokens: tokenUsage.outputTokens,
+                    totalTokens: tokenUsage.totalTokens,
+                    model: tokenUsage.model,
+                    requestType: 'chat_stream',
+                },
+            });
+        }
+
+        // Send completion event
+        res.write(`data: ${JSON.stringify({
+            type: 'done',
+            assistantMessageId: assistantMessage.id,
+            sources
+        })}\n\n`);
+
+        res.end();
+
+    } catch (error: any) {
+        console.error('RAG stream error:', error);
+        res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
+        res.end();
     }
 });
 

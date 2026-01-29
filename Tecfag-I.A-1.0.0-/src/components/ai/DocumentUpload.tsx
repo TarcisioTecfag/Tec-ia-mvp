@@ -115,7 +115,11 @@ export function DocumentUpload({ catalogId, onUploadComplete }: DocumentUploadPr
         accept: {
             'application/pdf': ['.pdf'],
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-            'text/plain': ['.txt']
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+            'text/plain': ['.txt'],
+            'image/jpeg': ['.jpg', '.jpeg'],
+            'image/png': ['.png'],
+            'image/webp': ['.webp']
         },
         maxSize: 50 * 1024 * 1024 // 50MB
     });
@@ -145,7 +149,7 @@ export function DocumentUpload({ catalogId, onUploadComplete }: DocumentUploadPr
                             Arraste documentos aqui ou clique para selecionar
                         </p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Suporta PDF, DOCX, TXT (máx. 50MB)
+                            Suporta PDF, DOCX, TXT, JPG, PNG, WEBP (máx. 50MB)
                         </p>
                     </>
                 )}

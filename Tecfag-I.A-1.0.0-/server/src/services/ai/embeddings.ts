@@ -1,25 +1,61 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+/**
+ * Embedding Service
+ * Usa gemini-embedding-001 via REST API com outputDimensionality: 768
+ * para manter compatibilidade com embeddings existentes
+ */
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-// const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || 'dummy' }); // Keep if needed later
+const EMBEDDING_MODEL = 'gemini-embedding-001';
+const OUTPUT_DIMENSIONS = 768; // Compatível com embeddings existentes
+
+interface EmbeddingResponse {
+    embedding?: {
+        values?: number[];
+    };
+}
 
 /**
- * Generate embeddings for text using Gemini API
+ * Generate embeddings for text using Gemini API REST endpoint
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+        throw new Error('GEMINI_API_KEY not configured');
+    }
+
     try {
-        const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`;
 
-        const result = await model.embedContent(text);
-        const embedding = result.embedding;
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: `models/${EMBEDDING_MODEL}`,
+                content: {
+                    parts: [{ text }]
+                },
+                outputDimensionality: OUTPUT_DIMENSIONS
+            })
+        });
 
-        if (!embedding || !embedding.values) {
-            throw new Error("Empty embedding returned");
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(`API returned ${response.status}: ${JSON.stringify(errorData)}`);
         }
 
-        return embedding.values;
+        const data = await response.json() as EmbeddingResponse;
+
+        if (!data.embedding?.values) {
+            throw new Error('Empty embedding returned');
+        }
+
+        console.log(`[Embedding] ✅ ${EMBEDDING_MODEL} (${data.embedding.values.length}D)`);
+        return data.embedding.values;
+
     } catch (error: any) {
-        console.error('Error generating embedding:', error);
+        console.error('[Embedding] Error:', error.message);
         throw new Error(`Failed to generate embedding: ${error.message}`);
     }
 }

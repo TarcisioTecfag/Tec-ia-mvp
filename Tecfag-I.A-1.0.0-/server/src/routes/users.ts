@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../config/database.js';
 import { authenticate, AuthRequest, adminOnly } from '../middleware/auth.js';
+import notificationService from '../services/notificationService.js';
 
 export const usersRouter = Router();
 
@@ -86,6 +87,15 @@ usersRouter.post('/', async (req: AuthRequest, res: Response) => {
                 updatedAt: true,
             },
         });
+
+        // Notificar admins sobre novo usuário
+        await notificationService.broadcastToAdmins(
+            'user',
+            '👤 Novo Usuário Cadastrado',
+            `${name} (${email}) foi adicionado como ${role === 'ADMIN' ? 'Administrador' : 'Usuário'}`,
+            'info',
+            { userId: user.id, createdBy: req.user?.id }
+        );
 
         res.status(201).json({ user });
     } catch (error) {

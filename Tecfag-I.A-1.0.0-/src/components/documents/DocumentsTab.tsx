@@ -323,7 +323,7 @@ const DocumentsTab = () => {
             />
 
             {/* Main Content */}
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 overflow-auto scrollbar-thin">
                 <div className="container mx-auto px-4 py-6 space-y-6">
                     {/* Header */}
                     <div className="space-y-2">

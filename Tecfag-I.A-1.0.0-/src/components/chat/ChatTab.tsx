@@ -23,6 +23,41 @@ import { ChatModeSelector, type ChatMode } from "./ChatModeSelector";
 import { ChatFunctionSelector, type ChatFunction } from "./ChatFunctionSelector";
 import { ChatSuggestions } from "./ChatSuggestions";
 import { AIPreferencesModal } from "./AIPreferencesModal";
+import { MessageFeedback } from "./MessageFeedback";
+import { ChatImage } from "./ChatImage";
+import { ChatImageGallery } from "./ChatImageGallery";
+
+// Helper function to extract image groups from markdown content (deduplicated by src)
+const extractImagesFromContent = (content: string): { src: string; alt?: string }[] => {
+  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  const images: { src: string; alt?: string }[] = [];
+  const seenSrcs = new Set<string>();
+  let match;
+  while ((match = imageRegex.exec(content)) !== null) {
+    const src = match[2];
+    // Deduplicate by normalizing the src (remove URL encoding differences)
+    const normalizedSrc = decodeURIComponent(src).toLowerCase();
+    if (!seenSrcs.has(normalizedSrc)) {
+      seenSrcs.add(normalizedSrc);
+      images.push({ alt: match[1] || undefined, src: match[2] });
+    }
+  }
+  return images;
+};
+
+// Helper function to remove images and orphan headers from markdown content
+const removeImagesFromContent = (content: string): string => {
+  return content
+    // Remove markdown images
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '')
+    // Remove orphan "Imagens Relacionadas" headers (with various formats)
+    .replace(/^#{1,6}\s*Imagens?\s*Relacionadas?:?\s*$/gim, '')
+    .replace(/^\*{1,2}Imagens?\s*Relacionadas?:?\*{1,2}\s*$/gim, '')
+    .replace(/^Imagens?\s*Relacionadas?:\s*$/gim, '')
+    // Clean up multiple consecutive blank lines
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
 
 interface Message {
   id: string;
@@ -30,6 +65,8 @@ interface Message {
   content: string;
   timestamp?: string;
   sources?: string[];
+  usedMode?: ChatMode;      // Modo usado para esta resposta
+  usedFunction?: ChatFunction; // Função usada (normal/table/list)
 }
 
 type ViewMode = "active" | "archived-list" | "archived-detail";
@@ -227,7 +264,8 @@ const ChatTab = () => {
         undefined,
         chatMode,
         functionMode === 'table', // isTableMode
-        abortControllerRef.current.signal
+        abortControllerRef.current.signal,
+        functionMode === 'attachment' // isAttachmentMode
       );
 
       stopThinking();
@@ -250,6 +288,10 @@ const ChatTab = () => {
         content: response.assistantMessage.content,
         timestamp: formatTime(new Date()),
         sources: sources.length > 0 ? sources : undefined,
+        usedMode: chatMode,
+        isTableMode: functionMode === 'table',
+        isAttachmentMode: functionMode === 'attachment',
+        usedFunction: functionMode,
       };
 
       setMessages((prev) => [...prev, aiMessage]);
@@ -634,12 +676,11 @@ const ChatTab = () => {
 
             {messages.map((message, index) => (
               <div
-                key={`${message.id}-${message.content.substring(0, 10)}`}
+                key={message.id}
                 className={cn(
                   "flex gap-2.5 animate-fade-in",
                   message.role === "user" ? "flex-row-reverse" : "flex-row"
                 )}
-                style={{ animationDelay: `${index * 50}ms` }}
               >
                 {/* Avatar */}
                 <div
@@ -666,27 +707,63 @@ const ChatTab = () => {
                     )}
                     style={{ borderColor: message.role !== "user" ? theme.border : undefined }}
                   >
-                    {message.role === "assistant" && message.sources && (
-                      <div className="absolute -top-3 -right-2 z-10">
-                        <HoverCard>
-                          <HoverCardTrigger asChild>
-                            <button className="bg-[#0d0d0d] hover:bg-black/80 border border-white/10 text-[10px] text-white/60 hover:text-white px-2 py-0.5 rounded-full flex items-center gap-1 transition-colors shadow-sm">
-                              <BookOpen className="w-3 h-3" />
-                              <span>Fontes</span>
-                            </button>
-                          </HoverCardTrigger>
-                          <HoverCardContent className="w-64 bg-[#1a1a1a] border-white/10 text-white p-3 z-50">
-                            <h4 className="text-xs font-semibold mb-2 text-white/90 uppercase tracking-wider">Fontes Consultadas</h4>
-                            <ul className="space-y-1.5 max-h-40 overflow-y-auto scrollbar-thin">
-                              {message.sources.map((source, i) => (
-                                <li key={i} className="text-xs text-white/70 flex items-start gap-2">
-                                  <span className={cn("mt-0.5 transition-colors duration-700", theme.primary)}>•</span>
-                                  <span className="break-words leading-tight">{source}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </HoverCardContent>
-                        </HoverCard>
+                    {message.role === "assistant" && (message.sources || message.usedMode) && (
+                      <div className="absolute -top-3 -right-2 z-10 flex gap-1">
+                        {/* Modo Badge */}
+                        {message.usedMode && (
+                          <HoverCard>
+                            <HoverCardTrigger asChild>
+                              <button className={cn(
+                                "bg-[#0d0d0d] hover:bg-black/80 border text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 transition-colors shadow-sm",
+                                getModeConfig(message.usedMode).borderColor,
+                                getModeConfig(message.usedMode).color
+                              )}>
+                                <Settings className="w-3 h-3" />
+                                <span>Modo</span>
+                              </button>
+                            </HoverCardTrigger>
+                            <HoverCardContent className="w-48 bg-[#1a1a1a] border-white/10 text-white p-3 z-50">
+                              <h4 className="text-xs font-semibold mb-2 text-white/90 uppercase tracking-wider">Configuração Usada</h4>
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs text-white/50">Modo:</span>
+                                  <span className={cn("text-xs font-medium", getModeConfig(message.usedMode).color)}>
+                                    {getModeConfig(message.usedMode).label.replace('Modelo ', '')}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs text-white/50">Formato:</span>
+                                  <span className="text-xs font-medium text-white/80">
+                                    {message.usedFunction === 'table' ? '📊 Tabela' :
+                                      message.usedFunction === 'list' ? '📋 Lista' : '📝 Normal'}
+                                  </span>
+                                </div>
+                              </div>
+                            </HoverCardContent>
+                          </HoverCard>
+                        )}
+                        {/* Fontes Badge */}
+                        {message.sources && (
+                          <HoverCard>
+                            <HoverCardTrigger asChild>
+                              <button className="bg-[#0d0d0d] hover:bg-black/80 border border-white/10 text-[10px] text-white/60 hover:text-white px-2 py-0.5 rounded-full flex items-center gap-1 transition-colors shadow-sm">
+                                <BookOpen className="w-3 h-3" />
+                                <span>Fontes</span>
+                              </button>
+                            </HoverCardTrigger>
+                            <HoverCardContent className="w-64 bg-[#1a1a1a] border-white/10 text-white p-3 z-50">
+                              <h4 className="text-xs font-semibold mb-2 text-white/90 uppercase tracking-wider">Fontes Consultadas</h4>
+                              <ul className="space-y-1.5 max-h-40 overflow-y-auto scrollbar-thin">
+                                {message.sources.map((source, i) => (
+                                  <li key={i} className="text-xs text-white/70 flex items-start gap-2">
+                                    <span className={cn("mt-0.5 transition-colors duration-700", theme.primary)}>•</span>
+                                    <span className="break-words leading-tight">{source}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </HoverCardContent>
+                          </HoverCard>
+                        )}
                       </div>
                     )}
                     <div className="prose prose-sm prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-[#1a1a1a] prose-pre:border prose-pre:border-white/10">
@@ -699,7 +776,7 @@ const ChatTab = () => {
                           tr: ({ node, ...props }) => <tr className="hover:bg-white/5 transition-colors" {...props} />,
                           th: ({ node, ...props }) => <th className="px-4 py-3 font-medium border-b border-white/10" {...props} />,
                           td: ({ node, ...props }) => <td className="px-4 py-3 text-white/70" {...props} />,
-                          p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                          p: ({ node, ...props }) => <div className="mb-2 last:mb-0" {...props} />,
                           ul: ({ node, ...props }) => <ul className="list-disc pl-4 mb-2 space-y-1 marker:text-white/40" {...props} />,
                           ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mb-2 space-y-1 marker:text-white/40" {...props} />,
                           li: ({ node, ...props }) => <li className="text-white/80" {...props} />,
@@ -708,7 +785,7 @@ const ChatTab = () => {
                               className={cn(
                                 "font-extrabold px-1 rounded-sm mx-0.5 transition-colors duration-700",
                                 theme.primary,
-                                theme.bgFull // Use the subtle background from the theme
+                                theme.bgFull
                               )}
                               {...props}
                             />
@@ -748,10 +825,19 @@ const ChatTab = () => {
                           pre: ({ node, ...props }) => (
                             <pre className="!bg-[#0d0d0d]/50 !p-0 rounded-lg overflow-hidden border border-white/10 my-4" {...props} />
                           ),
+                          img: () => null, // Images handled separately via ChatImageGallery
                         }}
                       >
-                        {message.content}
+                        {removeImagesFromContent(message.content)}
                       </ReactMarkdown>
+
+                      {/* Image Gallery - rendered after text for better flow */}
+                      {(() => {
+                        const images = extractImagesFromContent(message.content);
+                        return images.length > 0 ? (
+                          <ChatImageGallery images={images} />
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                   {/* Timestamp */}
@@ -761,6 +847,17 @@ const ChatTab = () => {
                   )}>
                     {message.timestamp}
                   </span>
+
+                  {/* Feedback for assistant messages (only in active view) */}
+                  {message.role === "assistant" && viewMode === "active" && message.id !== "welcome" && (
+                    <MessageFeedback
+                      messageId={message.id}
+                      messageContent={message.content}
+                      queryContent={index > 0 ? messages[index - 1].content : ""}
+                      model={"gemini-2.0-flash"}
+                      catalogId={undefined}
+                    />
+                  )}
                 </div>
               </div>
             ))}
@@ -768,32 +865,102 @@ const ChatTab = () => {
             {isLoading && (
               <div className="flex gap-3 animate-fade-in">
                 <div className={cn("flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-700", theme.iconBg)}>
-                  <Bot className={cn("w-4 h-4 transition-colors duration-700", theme.primary)} />
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                  >
+                    <Bot className={cn("w-4 h-4 transition-colors duration-700", theme.primary)} />
+                  </motion.div>
                 </div>
-                <div className={cn("bg-[#2a2a2a] rounded-xl rounded-tl-sm px-4 py-3 border transition-colors duration-700", theme.border)}>
-                  <div className="flex items-center gap-2">
+                <div className={cn("bg-gradient-to-r from-[#2a2a2a] to-[#1f1f1f] rounded-xl rounded-tl-sm px-5 py-4 border transition-colors duration-700 min-w-[280px]", theme.border)}>
+                  {/* Progress stages with animation */}
+                  <div className="space-y-3">
+                    {/* Stage indicator dots */}
+                    <div className="flex items-center gap-1.5 mb-2">
+                      {[0, 1, 2].map((i) => (
+                        <motion.div
+                          key={i}
+                          className={cn("w-2 h-2 rounded-full", theme.userBubble)}
+                          initial={{ opacity: 0.3, scale: 0.8 }}
+                          animate={{
+                            opacity: [0.3, 1, 0.3],
+                            scale: [0.8, 1.2, 0.8]
+                          }}
+                          transition={{
+                            duration: 1.5,
+                            repeat: Infinity,
+                            delay: i * 0.5,
+                            ease: "easeInOut"
+                          }}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Animated progress text - CYCLES CONTINUOUSLY */}
                     <motion.div
-                      className="flex gap-1"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
+                      className="relative overflow-hidden"
+                      style={{ height: 28 }}
                     >
-                      <motion.span
-                        className={cn("w-1.5 h-1.5 rounded-full transition-colors duration-700", theme.userBubble)}
-                        animate={{ y: [0, -4, 0] }}
-                        transition={{ duration: 0.6, repeat: Infinity, ease: "easeInOut", delay: 0 }}
-                      />
-                      <motion.span
-                        className={cn("w-1.5 h-1.5 rounded-full transition-colors duration-700", theme.userBubble)}
-                        animate={{ y: [0, -4, 0] }}
-                        transition={{ duration: 0.6, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
-                      />
-                      <motion.span
-                        className={cn("w-1.5 h-1.5 rounded-full transition-colors duration-700", theme.userBubble)}
-                        animate={{ y: [0, -4, 0] }}
-                        transition={{ duration: 0.6, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
-                      />
+                      <motion.div
+                        animate={{ y: [0, -28, -56, -28, 0] }}
+                        transition={{
+                          duration: 8,
+                          ease: "easeInOut",
+                          repeat: Infinity,
+                          repeatType: "loop"
+                        }}
+                        className="space-y-0"
+                      >
+                        <div className="flex items-center gap-2 h-7">
+                          <motion.span
+                            className={cn("text-lg", theme.primary)}
+                            animate={{ rotate: [0, 360] }}
+                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          >
+                            🔍
+                          </motion.span>
+                          <span className="text-sm text-white/70 font-medium">Analisando sua pergunta...</span>
+                        </div>
+                        <div className="flex items-center gap-2 h-7">
+                          <motion.span
+                            className={cn("text-lg", theme.primary)}
+                            animate={{ scale: [1, 1.2, 1] }}
+                            transition={{ duration: 0.8, repeat: Infinity }}
+                          >
+                            📚
+                          </motion.span>
+                          <span className="text-sm text-white/70 font-medium">Buscando documentos relevantes...</span>
+                        </div>
+                        <div className="flex items-center gap-2 h-7">
+                          <motion.span
+                            className={cn("text-lg", theme.primary)}
+                            animate={{ opacity: [1, 0.5, 1] }}
+                            transition={{ duration: 0.5, repeat: Infinity }}
+                          >
+                            🧠
+                          </motion.span>
+                          <span className="text-sm text-white/70 font-medium">Gerando resposta inteligente...</span>
+                        </div>
+                      </motion.div>
                     </motion.div>
-                    <span className="text-sm text-white/50 ml-1.5 font-light animate-pulse">Pensando...</span>
+
+                    {/* Animated progress bar - INFINITE OSCILLATION */}
+                    <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden">
+                      <motion.div
+                        className={cn("h-full rounded-full", theme.userBubble)}
+                        initial={{ width: "0%", x: "0%" }}
+                        animate={{
+                          width: ["0%", "60%", "90%", "60%", "90%", "95%", "70%", "95%"],
+                          x: ["0%", "0%", "0%", "0%", "0%", "0%", "0%", "0%"]
+                        }}
+                        transition={{
+                          duration: 12,
+                          ease: "easeInOut",
+                          repeat: Infinity,
+                          repeatType: "reverse"
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

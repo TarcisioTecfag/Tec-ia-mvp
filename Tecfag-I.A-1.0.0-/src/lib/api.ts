@@ -251,15 +251,91 @@ export const chatApi = {
         }),
 
     // RAG AI endpoints
-    sendMessageRAG: (content: string, catalogId?: string, mode?: string, isTableMode?: boolean, signal?: AbortSignal) =>
+    sendMessageRAG: (content: string, catalogId?: string, mode?: string, isTableMode?: boolean, signal?: AbortSignal, isAttachmentMode?: boolean) =>
         apiFetch<ChatResponse & { sources?: Array<{ fileName: string; chunkIndex: number; similarity: number }> }>('/api/chat/rag', {
             method: 'POST',
-            body: JSON.stringify({ content, catalogId, mode, isTableMode }),
+            body: JSON.stringify({ content, catalogId, mode, isTableMode, isAttachmentMode }),
             signal,
         }),
 
     getSuggestions: (catalogId?: string) =>
         apiFetch<{ suggestions: string[] }>(`/api/chat/suggestions${catalogId ? `?catalogId=${catalogId}` : ''}`),
+
+    // Streaming RAG endpoint
+    sendMessageRAGStream: async (
+        content: string,
+        catalogId: string | undefined,
+        mode: string | undefined,
+        isTableMode: boolean | undefined,
+        onChunk: (text: string) => void,
+        onUserMessageId: (id: string) => void,
+        onDone: (assistantMessageId: string, sources: Array<{ fileName: string; chunkIndex: number; similarity: number }>) => void,
+        onError: (error: string) => void,
+        signal?: AbortSignal,
+        isAttachmentMode?: boolean
+    ) => {
+        const token = localStorage.getItem('auth_token');
+
+        try {
+            const response = await fetch(`${API_URL}/api/chat/rag/stream`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({ content, catalogId, mode, isTableMode, isAttachmentMode }),
+                signal,
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Erro de conexão' }));
+                throw new Error(errorData.error || 'Erro na requisição');
+            }
+
+            const reader = response.body?.getReader();
+            if (!reader) throw new Error('Stream not supported');
+
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+
+
+                            if (data.type === 'chunk') {
+
+                                onChunk(data.content);
+                            } else if (data.type === 'user_message') {
+                                onUserMessageId(data.id);
+                            } else if (data.type === 'done') {
+
+                                onDone(data.assistantMessageId, data.sources || []);
+                            } else if (data.type === 'error') {
+                                onError(data.content);
+                            }
+                        } catch (e) {
+                            // Skip malformed JSON
+                        }
+                    }
+                }
+            }
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                throw error; // Re-throw abort errors for proper handling
+            }
+            onError(error.message || 'Erro ao processar streaming');
+        }
+    },
 };
 
 // ============ AUTH API ============
@@ -377,7 +453,9 @@ export interface DocumentFolder {
     id: string;
     name: string;
     order: number;
+    parentId: string | null;
     documentCount: number;
+    childrenCount: number;
     createdAt: string;
 }
 
@@ -409,10 +487,10 @@ export const documentsApi = {
         }>(`/api/documents/${id}/status`),
 
     // Folder management
-    createFolder: (name: string) =>
+    createFolder: (name: string, parentId?: string) =>
         apiFetch<DocumentFolder>('/api/documents/folders', {
             method: 'POST',
-            body: JSON.stringify({ name }),
+            body: JSON.stringify({ name, parentId }),
         }),
 
     getFolders: () =>
@@ -436,3 +514,302 @@ export const documentsApi = {
         }),
 };
 
+// ============ ACCESS GROUPS API ============
+
+export interface AccessGroup {
+    id: string;
+    name: string;
+    description?: string | null;
+    canViewChat: boolean;
+    canViewMindMap: boolean;
+    canViewCatalog: boolean;
+    canViewUsers: boolean;
+    canViewMonitoring: boolean;
+    canViewDocuments: boolean;
+    canViewSettings: boolean;
+    canViewNotifications: boolean;
+    userCount: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface AccessGroupDetail extends AccessGroup {
+    users: {
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+    }[];
+}
+
+export interface AvailableUser {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    accessGroupId: string | null;
+    accessGroup: {
+        id: string;
+        name: string;
+    } | null;
+}
+
+export const accessGroupsApi = {
+    getAll: () =>
+        apiFetch<{ groups: AccessGroup[] }>('/api/access-groups'),
+
+    getById: (id: string) =>
+        apiFetch<{ group: AccessGroupDetail }>(`/api/access-groups/${id}`),
+
+    create: (data: {
+        name: string;
+        description?: string;
+        canViewChat?: boolean;
+        canViewMindMap?: boolean;
+        canViewCatalog?: boolean;
+        canViewUsers?: boolean;
+        canViewMonitoring?: boolean;
+        canViewDocuments?: boolean;
+        canViewSettings?: boolean;
+        canViewNotifications?: boolean;
+    }) =>
+        apiFetch<{ group: AccessGroup }>('/api/access-groups', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+
+    update: (id: string, data: {
+        name?: string;
+        description?: string | null;
+        canViewChat?: boolean;
+        canViewMindMap?: boolean;
+        canViewCatalog?: boolean;
+        canViewUsers?: boolean;
+        canViewMonitoring?: boolean;
+        canViewDocuments?: boolean;
+        canViewSettings?: boolean;
+        canViewNotifications?: boolean;
+    }) =>
+        apiFetch<{ group: AccessGroup }>(`/api/access-groups/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        }),
+
+    delete: (id: string) =>
+        apiFetch<{ message: string }>(`/api/access-groups/${id}`, {
+            method: 'DELETE',
+        }),
+
+    updateUsers: (id: string, userIds: string[]) =>
+        apiFetch<{ group: AccessGroupDetail }>(`/api/access-groups/${id}/users`, {
+            method: 'PUT',
+            body: JSON.stringify({ userIds }),
+        }),
+
+    getAvailableUsers: () =>
+        apiFetch<{ users: AvailableUser[] }>('/api/access-groups/meta/available-users'),
+};
+
+// ============ FEEDBACK API ============
+
+export interface FeedbackData {
+    messageId?: string;
+    messageContent: string;
+    queryContent: string;
+    rating: 'positive' | 'negative';
+    category?: string;
+    comment?: string;
+    model?: string;
+    catalogId?: string;
+}
+
+export interface FeedbackStats {
+    total: number;
+    totalPositive: number;
+    totalNegative: number;
+    satisfactionRate: string;
+    categoryBreakdown: {
+        category: string;
+        count: number;
+    }[];
+}
+
+export interface Feedback {
+    id: string;
+    rating: string;
+    category: string | null;
+    comment: string | null;
+    queryContent: string;
+    messageContent: string;
+    createdAt: string;
+    user: {
+        name: string;
+        email: string;
+    };
+}
+
+export const feedbackApi = {
+    submit: (data: FeedbackData) =>
+        apiFetch<{ success: boolean; feedback: Feedback }>('/api/feedback', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+
+    getStats: () =>
+        apiFetch<FeedbackStats>('/api/feedback/stats'),
+
+    getRecent: (limit?: number, rating?: 'positive' | 'negative') => {
+        const params = new URLSearchParams();
+        if (limit) params.append('limit', limit.toString());
+        if (rating) params.append('rating', rating);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        return apiFetch<{ feedbacks: Feedback[] }>(`/api/feedback/recent${query}`);
+    },
+};
+
+// ============ BACKUP API ============
+
+export interface BackupInfo {
+    name: string;
+    date: string;
+    sizeMB: string;
+}
+
+export interface BackupStatus {
+    totalBackups: number;
+    totalSizeMB: string;
+    lastBackup: BackupInfo | null;
+    oldestBackup: BackupInfo | null;
+    isIntegrity: boolean;
+    integrityDetails: string;
+    settings: {
+        maxBackups: number;
+        intervalHours: number;
+        nextScheduledBackup: string | null;
+    };
+}
+
+export interface BackupSettings {
+    maxBackups: number;
+    intervalHours: number;
+    nextScheduledBackup: string | null;
+}
+
+const API_URL_BASE = API_URL;
+
+export const backupApi = {
+    list: () =>
+        apiFetch<{ backups: BackupInfo[] }>('/api/backup/list'),
+
+    create: (reason?: string) =>
+        apiFetch<{ message: string; backup: BackupInfo }>('/api/backup/create', {
+            method: 'POST',
+            body: JSON.stringify({ reason }),
+        }),
+
+    restore: (name: string) =>
+        apiFetch<{ message: string; requiresRestart: boolean }>(`/api/backup/restore/${encodeURIComponent(name)}`, {
+            method: 'POST',
+        }),
+
+    delete: (name: string) =>
+        apiFetch<{ message: string }>(`/api/backup/${encodeURIComponent(name)}`, {
+            method: 'DELETE',
+        }),
+
+    getStatus: () =>
+        apiFetch<BackupStatus>('/api/backup/status'),
+
+    checkIntegrity: () =>
+        apiFetch<{ isOk: boolean; details: string }>('/api/backup/integrity'),
+
+    getSettings: () =>
+        apiFetch<BackupSettings>('/api/backup/settings'),
+
+    updateSettings: (settings: Partial<{ maxBackups: number; intervalHours: number }>) =>
+        apiFetch<{ message: string; settings: BackupSettings }>('/api/backup/settings', {
+            method: 'PUT',
+            body: JSON.stringify(settings),
+        }),
+
+    getDownloadUrl: (name: string) =>
+        `${API_URL_BASE}/api/backup/download/${encodeURIComponent(name)}`,
+};
+
+// ============ NOTIFICATIONS API ============
+
+export interface NotificationType {
+    id: string;
+    type: string;
+    category: string;
+    title: string;
+    message: string;
+    metadata: string | null;
+    isRead: boolean;
+    readAt: string | null;
+    createdAt: string;
+}
+
+export interface NotificationSettings {
+    id: string;
+    systemAlerts: boolean;
+    userAlerts: boolean;
+    documentAlerts: boolean;
+    chatAlerts: boolean;
+    inAppEnabled: boolean;
+    emailEnabled: boolean;
+    frequency: string;
+    quietHoursEnabled: boolean;
+    quietHoursStart: string | null;
+    quietHoursEnd: string | null;
+}
+
+export const notificationsApi = {
+    getAll: (limit = 50, offset = 0, unreadOnly = false) => {
+        const params = new URLSearchParams();
+        params.append('limit', limit.toString());
+        params.append('offset', offset.toString());
+        if (unreadOnly) params.append('unreadOnly', 'true');
+        return apiFetch<{ notifications: NotificationType[]; total: number; limit: number; offset: number }>(
+            `/api/notifications?${params.toString()}`
+        );
+    },
+
+    getUnreadCount: () =>
+        apiFetch<{ count: number }>('/api/notifications/unread-count'),
+
+    getSettings: () =>
+        apiFetch<{ settings: NotificationSettings }>('/api/notifications/settings'),
+
+    updateSettings: (settings: Partial<NotificationSettings>) =>
+        apiFetch<{ settings: NotificationSettings }>('/api/notifications/settings', {
+            method: 'PUT',
+            body: JSON.stringify(settings),
+        }),
+
+    markAsRead: (id: string) =>
+        apiFetch<{ notification: NotificationType }>(`/api/notifications/${id}/read`, {
+            method: 'PUT',
+        }),
+
+    markAllAsRead: () =>
+        apiFetch<{ message: string; count: number }>('/api/notifications/read-all', {
+            method: 'PUT',
+        }),
+
+    delete: (id: string) =>
+        apiFetch<{ message: string }>(`/api/notifications/${id}`, {
+            method: 'DELETE',
+        }),
+
+    clearAll: () =>
+        apiFetch<{ message: string; count: number }>('/api/notifications/clear', {
+            method: 'DELETE',
+        }),
+
+    createTest: (data?: { type?: string; category?: string; title?: string; message?: string }) =>
+        apiFetch<{ notification: NotificationType }>('/api/notifications/test', {
+            method: 'POST',
+            body: JSON.stringify(data || {}),
+        }),
+};
