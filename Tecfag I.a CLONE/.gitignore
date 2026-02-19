@@ -1,0 +1,52 @@
+# ===========================================
+# Tecfag I.A - .gitignore
+# ===========================================
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependências
+node_modules
+
+# Build
+dist
+dist-ssr
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Arquivos locais de desenvolvimento
+*.local
+
+# ===========================================
+# SEGURANÇA: Chaves e Segredos
+# ===========================================
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+
+# Banco de dados e Documentos Locais
+server/prisma/*.db
+server/uploads/
+server/backups/
+server/logs/
+debug-*.txt
+models_list.txt
+*.timestamp-*.mjs

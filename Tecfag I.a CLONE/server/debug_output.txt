@@ -1,0 +1,42 @@
+Starting debug...
+Connecting to Redis at localhost:6379
+Connected!
+
+--- ALL KEYS (limit 100) ---
+Total keys found: 18
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:8b076fb3a3fb07555bf56b03bdc4d8e1
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:1496a564af3093e180dd8078d7b41267
+cache:embed:8b076fb3a3fb07555bf56b03bdc4d8e1
+cache:embed:1496a564af3093e180dd8078d7b41267
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:8c6327a65fba83145ca6669da0a64040:meta
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:e4619a824fbabfd9be65d28d26aef122
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:73fd6ce85afd25c1978ef3618ed7860e
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:64a2abd80b0c3f1ea532b0115c6d5a66
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:efb11d3bbd1ea83285ea5d63f7bb70a8
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:7a778bd5ac35a656f52de0c7ee8ca213
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:da01e16ccb287556a27d1cb736b34e5e
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:2e5d1a1c7d39f1cdebf702c2a4a36e7a
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:44f06583db80d9bc860763301971e0c1
+cache:embed:7a778bd5ac35a656f52de0c7ee8ca213
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:e4619a824fbabfd9be65d28d26aef122:meta
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:bbeb596c95a1ff44869b78cbe041cbb1
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:7a778bd5ac35a656f52de0c7ee8ca213:meta
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:8c6327a65fba83145ca6669da0a64040
+
+--- KEYS matching *query* ---
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:8b076fb3a3fb07555bf56b03bdc4d8e1
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:1496a564af3093e180dd8078d7b41267
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:8c6327a65fba83145ca6669da0a64040:meta
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:e4619a824fbabfd9be65d28d26aef122
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:73fd6ce85afd25c1978ef3618ed7860e
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:64a2abd80b0c3f1ea532b0115c6d5a66
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:efb11d3bbd1ea83285ea5d63f7bb70a8
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:7a778bd5ac35a656f52de0c7ee8ca213
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:da01e16ccb287556a27d1cb736b34e5e
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:2e5d1a1c7d39f1cdebf702c2a4a36e7a
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:44f06583db80d9bc860763301971e0c1
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:e4619a824fbabfd9be65d28d26aef122:meta
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:bbeb596c95a1ff44869b78cbe041cbb1
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:7a778bd5ac35a656f52de0c7ee8ca213:meta
+cache:query:query:all:ac015969-6225-4e98-a8f3-dd777d30ff54:8c6327a65fba83145ca6669da0a64040
+Done.

@@ -1,0 +1,58 @@
+[2026-02-03T17:39:07.379Z] ChatService module loaded - Code Updated
+[2026-02-03T17:39:09.496Z] ChatService module loaded - Code Updated
+[2026-02-03T17:39:11.750Z] ChatService module loaded - Code Updated
+[2026-02-03T17:39:13.839Z] ChatService module loaded - Code Updated
+[2026-02-03T17:39:15.997Z] ChatService module loaded - Code Updated
+[2026-02-03T17:39:18.191Z] ChatService module loaded - Code Updated
+[2026-02-03T17:39:20.220Z] ChatService module loaded - Code Updated
+[2026-02-03T17:39:22.307Z] ChatService module loaded - Code Updated
+[2026-02-03T17:53:57.789Z] Processing question: "Qual compressor indicado para um DGF 2500?"
+[2026-02-03T17:53:57.797Z] Params: catalogId=undefined, mode=educational
+[2026-02-03T17:54:00.275Z] Found 10 chunks.
+[2026-02-03T17:54:00.279Z] First chunk: 071eb8a5-b00a-47b5-89f6-3a07fbb990a9 - Todas as planilhas atualizadas.txt
+[2026-02-03T17:54:00.280Z] Chunk [0]: Todas as planilhas atualizadas.txt (Sim: 0.85, ID: 071eb8a5-b00a-47b5-89f6-3a07fbb990a9)
+[2026-02-03T17:54:00.281Z] Chunk [1]: Todas as planilhas atualizadas.txt (Sim: 0.85, ID: 082f7f0c-500c-42e4-9c43-ace5c8f1cc03)
+[2026-02-03T17:54:00.282Z] Chunk [2]: Mapeamento_Envasadoras_.txt (Sim: 0.85, ID: 1a71ffaf-d2a0-4211-a8a8-9f56a65266b4)
+[2026-02-03T17:54:00.282Z] Chunk [3]: Compilado json todas as maquinas.txt (Sim: 0.6000669213127323, ID: ca2251c3-7385-4803-9941-c4cb7d9d9a5a)
+[2026-02-03T17:54:00.283Z] Chunk [4]: DZB1100C - Embaladora Flow Pack - DISM.docx (Sim: 0.5997321420211988, ID: f7c58c2e-b3cc-4c40-8eea-abd0106ba040)
+[2026-02-03T17:54:00.283Z] Chunk [5]: Compilado json todas as maquinas.txt (Sim: 0.5966198490499801, ID: b93e6900-7b69-43b3-be2d-74c15a5254de)
+[2026-02-03T17:54:00.284Z] Chunk [6]: Compilado json todas as maquinas.txt (Sim: 0.588119350184391, ID: 4c2c6e0d-3fa2-4626-a4da-4f3c0e20c949)
+[2026-02-03T17:54:00.284Z] Chunk [7]: Compilado json todas as maquinas.txt (Sim: 0.5876800689554325, ID: 4f083e14-15bb-45af-9034-fac5f05a9116)
+[2026-02-03T17:54:00.285Z] Chunk [8]: VSF2000  Envasadora Autom�tica com 4 Balan�as Lineares - DISM.docx (Sim: 0.5740170400899876, ID: ab32f1f4-dca1-46f9-91f1-323a569c6284)
+[2026-02-03T17:54:00.286Z] Chunk [9]: DZB1100C - Embaladora Flow Pack - DISM.docx (Sim: 0.5703098185567452, ID: b36ce086-5f0c-4cbd-bad0-7431c6cddb4a)
+[2026-02-03T17:57:32.660Z] Processing question: "meu cliente quer selar pacotes de amendoin de 10cm de altura com 2kg cada pacote, qual maquina vc me recomenda?"
+[2026-02-03T17:57:32.660Z] Params: catalogId=undefined, mode=educational
+[2026-02-03T17:57:33.970Z] Found 14 chunks.
+[2026-02-03T17:57:33.971Z] First chunk: 781c2947-4db9-4f76-9ae2-12be1783d045 - PCS P - Plástico (10cm).pdf
+[2026-02-03T17:57:33.972Z] Chunk [0]: PCS P - Plástico (10cm).pdf (Sim: 0.85, ID: 781c2947-4db9-4f76-9ae2-12be1783d045)
+[2026-02-03T17:57:33.975Z] Chunk [1]: ARLM200 A II _ Rotuladora Autom. p_ frascos Cilindricos.pdf (Sim: 0.85, ID: 01da98e2-8eeb-418f-b036-8c30c7ca2720)
+[2026-02-03T17:57:33.977Z] Chunk [2]: XQD-19E.pdf (Sim: 0.85, ID: 02201865-2ffc-4841-9dc5-df6a03f6bc8d)
+[2026-02-03T17:57:33.979Z] Chunk [3]: BS20 - TÃºnel de Encolhimento de Bancada.docx (Sim: 0.85, ID: 06f15eba-2f1e-48fc-80ca-d39650d3d9c1)
+[2026-02-03T17:57:33.979Z] Chunk [4]: Compilado json todas as maquinas.txt (Sim: 0.7538463099457487, ID: 3c3ee309-fb10-4f42-977a-27bf03470ee4)
+[2026-02-03T17:57:33.981Z] Chunk [5]: Compilado json todas as maquinas.txt (Sim: 0.7476594316489678, ID: f26f3cbc-da1f-4385-b4a2-1da02e49fa5f)
+[2026-02-03T17:57:33.983Z] Chunk [6]: Compilado json todas as maquinas.txt (Sim: 0.7464636447428004, ID: 91093602-8f0c-4a10-acdc-a20ab77cac33)
+[2026-02-03T17:57:33.986Z] Chunk [7]: Compilado json todas as maquinas.txt (Sim: 0.5666719178429945, ID: 39ef6fb1-87a3-4ca5-89c9-57abd9405103)
+[2026-02-03T17:57:33.987Z] Chunk [8]: ARLM 220 - Rotuladora AutomÃ¡tica para Produtos Planos - DISM.docx (Sim: 0.5660843998454931, ID: 84ff9c36-cab1-448a-85f6-730b87d5bbcb)
+[2026-02-03T17:57:33.989Z] Chunk [9]: VSF2000  Envasadora Autom�tica com 4 Balan�as Lineares - DISM.docx (Sim: 0.5602677129429748, ID: 076bd1a6-602c-41ff-a048-3ec04e61d73a)
+[2026-02-03T17:57:33.992Z] Chunk [10]: link video youtube A2.txt (Sim: 0.5553051268387249, ID: 8e310e4e-a23d-4324-86f1-26bfdc88350f)
+[2026-02-03T17:57:33.994Z] Chunk [11]: DZB1100C - Embaladora Flow Pack - DISM.docx (Sim: 0.5522416461975074, ID: b36ce086-5f0c-4cbd-bad0-7431c6cddb4a)
+[2026-02-03T17:57:33.995Z] Chunk [12]: E610 - Aplicador Manual de Filme Stretch - DISM.docx (Sim: 0.5470633157623378, ID: 5fa3c8b8-2604-46d0-8ce9-58a02f238ea6)
+[2026-02-03T17:57:33.995Z] Chunk [13]: EC80 - Rosqueadora Manual - DISM.docx (Sim: 0.5463823849065844, ID: 063bf8b3-e2bf-4c1c-a949-ec2475d2eebd)
+[2026-02-03T18:00:50.853Z] Processing question: "KFG500 Não daria certo?"
+[2026-02-03T18:00:50.854Z] Params: catalogId=undefined, mode=educational
+[2026-02-03T18:00:51.908Z] Found 14 chunks.
+[2026-02-03T18:00:51.909Z] First chunk: 01da98e2-8eeb-418f-b036-8c30c7ca2720 - ARLM200 A II _ Rotuladora Autom. p_ frascos Cilindricos.pdf
+[2026-02-03T18:00:51.909Z] Chunk [0]: ARLM200 A II _ Rotuladora Autom. p_ frascos Cilindricos.pdf (Sim: 0.85, ID: 01da98e2-8eeb-418f-b036-8c30c7ca2720)
+[2026-02-03T18:00:51.910Z] Chunk [1]: XQD-19E.pdf (Sim: 0.85, ID: 02201865-2ffc-4841-9dc5-df6a03f6bc8d)
+[2026-02-03T18:00:51.911Z] Chunk [2]: Mapeamento_Dosadora.txt (Sim: 0.85, ID: 7d857fc3-2c3a-4a7c-88e5-33ac3686a367)
+[2026-02-03T18:00:51.911Z] Chunk [3]: Todas as planilhas atualizadas.txt (Sim: 0.85, ID: 854cbd88-94e8-44f3-9057-bae6d6819abe)
+[2026-02-03T18:00:51.912Z] Chunk [4]: Compilado json todas as maquinas.txt (Sim: 0.6097492086802896, ID: 39ef6fb1-87a3-4ca5-89c9-57abd9405103)
+[2026-02-03T18:00:51.912Z] Chunk [5]: Compilado json todas as maquinas.txt (Sim: 0.6059708815375906, ID: 005b19d2-f301-4945-bec9-615da94e6fd6)
+[2026-02-03T18:00:51.912Z] Chunk [6]: Compilado json todas as maquinas.txt (Sim: 0.6039352721535383, ID: d42dad68-264e-4013-8077-7de95e8c6027)
+[2026-02-03T18:00:51.913Z] Chunk [7]: Compilado json todas as maquinas.txt (Sim: 0.6023607138047621, ID: 582efd3a-0dbb-4416-9230-881e3322152b)
+[2026-02-03T18:00:51.914Z] Chunk [8]: Compilado json todas as maquinas.txt (Sim: 0.596201134438312, ID: 4c2c6e0d-3fa2-4626-a4da-4f3c0e20c949)
+[2026-02-03T18:00:51.916Z] Chunk [9]: VSF2000  Envasadora Autom�tica com 4 Balan�as Lineares - DISM.docx (Sim: 0.5769343762122225, ID: 076bd1a6-602c-41ff-a048-3ec04e61d73a)
+[2026-02-03T18:00:51.917Z] Chunk [10]: HZK-160 - Envasadora de Líquidos - DISM.docx (Sim: 0.5742442195708835, ID: 46986a06-4f4b-4852-b9de-05783d72695e)
+[2026-02-03T18:00:51.918Z] Chunk [11]: DZB1100C - Embaladora Flow Pack - DISM.docx (Sim: 0.5716321865545352, ID: f7c58c2e-b3cc-4c40-8eea-abd0106ba040)
+[2026-02-03T18:00:51.918Z] Chunk [12]: Linha VM-TE_B- Seladoras a Vácuo de Câmara Simples - DISM.docx (Sim: 0.566823989586474, ID: 4e26b5d8-4ccf-4cd3-b1f2-0447caa2de20)
+[2026-02-03T18:00:51.919Z] Chunk [13]: ADC50_S II - Rosqueadeira AutomÃ¡tica de ChÃ£o - DISM.docx (Sim: 0.5664033484042887, ID: c942d4a3-915a-4502-989d-462ddf77489d)
