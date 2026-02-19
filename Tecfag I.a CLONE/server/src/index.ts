@@ -41,7 +41,7 @@ const logPrefix = IS_CLUSTER_MODE ? `[Worker ${WORKER_ID}]` : '[Server]';
 import morgan from 'morgan';
 app.use(morgan('dev'));
 app.use(cors({
-    origin: [process.env.FRONTEND_URL || 'http://localhost:8080', 'http://localhost:8081', 'http://localhost:8082'],
+    origin: [process.env.FRONTEND_URL || 'http://localhost:8080', 'http://localhost:8081', 'http://localhost:8082', 'https://teciaalpha.vercel.app'],
     credentials: true,
 }));
 app.use(express.json());
