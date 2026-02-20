@@ -128,6 +128,32 @@ router.post('/upload', adminOnly, upload.single('file'), async (req: AuthRequest
 });
 
 /**
+ * Restore a physical file (Admin only)
+ * Used to sync files from local to cloud after DB migration
+ */
+router.post('/restore-file', adminOnly, upload.single('file'), async (req: AuthRequest, res: Response) => {
+    try {
+        const file = req.file;
+        const { targetFilename } = req.body;
+
+        if (!file || !targetFilename) {
+            return res.status(400).json({ error: 'Arquivo e targetFilename são obrigatórios' });
+        }
+
+        // Move uploaded file to target filename to match what's in the DB
+        const uploadDir = path.resolve(process.env.UPLOAD_DIR || './uploads');
+        const targetPath = path.join(uploadDir, targetFilename);
+
+        await fs.rename(file.path, targetPath);
+
+        res.json({ success: true, message: 'Arquivo restaurado com sucesso' });
+    } catch (error: any) {
+        console.error('Error restoring file:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
  * List ALL documents (Admin only - for Document Management module)
  */
 router.get('/all', adminOnly, async (req: AuthRequest, res: Response) => {

@@ -15,6 +15,7 @@ async function exportData() {
     const machines = await localPrisma.machine.findMany({ include: { specifications: true } });
     const mindmaps = await localPrisma.mindMap.findMany({ include: { nodes: { include: { connectionsFrom: true } } } });
     const catalogItems = await localPrisma.catalogItem.findMany();
+    const documentFolders = await localPrisma.documentFolder.findMany();
     const documents = await localPrisma.document.findMany({ include: { chunks: true } });
     const chatFolders = await localPrisma.chatFolder.findMany();
     const archivedChats = await localPrisma.archivedChat.findMany();
@@ -25,6 +26,7 @@ async function exportData() {
         machines,
         mindmaps,
         catalogItems,
+        documentFolders,
         documents,
         chatFolders,
         archivedChats
@@ -117,6 +119,27 @@ async function importData() {
             });
         }
 
+        // 4.5 Document Folders
+        if (data.documentFolders) {
+            console.log(`Importing ${data.documentFolders.length} document folders...`);
+            for (const folder of data.documentFolders) {
+                const { parentId, ...folderData } = folder;
+                await railwayPrisma.documentFolder.upsert({
+                    where: { id: folder.id },
+                    update: {},
+                    create: folderData
+                });
+            }
+            for (const folder of data.documentFolders) {
+                if (folder.parentId) {
+                    await railwayPrisma.documentFolder.update({
+                        where: { id: folder.id },
+                        data: { parentId: folder.parentId }
+                    });
+                }
+            }
+        }
+
         // 5. Documents
         console.log(`Importing ${data.documents.length} documents...`);
         for (const doc of data.documents) {
@@ -127,9 +150,8 @@ async function importData() {
                 if (!exists) docData.catalogId = null;
             }
             if (docData.folderId) {
-                // Se folder não foi migrado ainda, remover vínculo. 
-                // Idealmente deveríamos migrar DocumentFolders antes.
-                docData.folderId = null;
+                const exists = await railwayPrisma.documentFolder.findUnique({ where: { id: docData.folderId } });
+                if (!exists) docData.folderId = null;
             }
 
             await railwayPrisma.document.upsert({

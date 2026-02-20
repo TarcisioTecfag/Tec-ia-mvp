@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, FileText, Loader2, CheckCircle2, AlertCircle, BookOpen, Paperclip } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { API_URL } from "@/lib/api";
 
 interface DocumentUploadProps {
     catalogId?: string;  // Agora opcional para suportar documentos globais
@@ -46,7 +47,7 @@ export function DocumentUpload({ catalogId, folderId, onUploadComplete }: Docume
                     formData.append('folderId', folderId);
                 }
 
-                const response = await fetch('/api/documents/upload', {
+                const response = await fetch(`${API_URL}/api/documents/upload`, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
@@ -84,7 +85,7 @@ export function DocumentUpload({ catalogId, folderId, onUploadComplete }: Docume
     const monitorProcessing = async (fileName: string, documentId: string) => {
         const interval = setInterval(async () => {
             try {
-                const response = await fetch(`/api/documents/${documentId}/status`, {
+                const response = await fetch(`${API_URL}/api/documents/${documentId}/status`, {
                     headers: {
                         'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
                     }

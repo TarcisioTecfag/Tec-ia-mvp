@@ -6,7 +6,7 @@ import { DocumentList } from "@/components/ai/DocumentList";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DocumentFolderSidebar } from "./DocumentFolderSidebar";
 import { MoveDocumentDialog } from "./MoveDocumentDialog";
-import { documentsApi, type DocumentFolder } from "@/lib/api";
+import { documentsApi, API_URL, type DocumentFolder } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import {
     DropdownMenu,
@@ -59,17 +59,7 @@ const DocumentsTab = () => {
 
     const loadDocuments = async () => {
         try {
-            const response = await fetch('/api/documents/all', {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error('Erro ao carregar documentos');
-            }
-
-            const data = await response.json();
+            const data = await documentsApi.getAll();
             setDocuments(data);
         } catch (error) {
             console.error('Error loading documents:', error);
@@ -138,18 +128,8 @@ const DocumentsTab = () => {
         }
 
         try {
-            const response = await fetch(`/api/documents/${id}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-                }
-            });
-
-            if (response.ok) {
-                loadAll();
-            } else {
-                alert('Erro ao deletar documento');
-            }
+            await documentsApi.delete(id);
+            loadAll();
         } catch (error) {
             console.error('Error deleting document:', error);
             alert('Erro ao deletar documento');
@@ -158,19 +138,9 @@ const DocumentsTab = () => {
 
     const handleReindex = async (id: string) => {
         try {
-            const response = await fetch(`/api/documents/${id}/reindex`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-                }
-            });
-
-            if (response.ok) {
-                // Atualizar status após alguns segundos
-                setTimeout(loadAll, 3000);
-            } else {
-                alert('Erro ao reindexar documento');
-            }
+            await documentsApi.reindex(id);
+            // Atualizar status após alguns segundos
+            setTimeout(loadAll, 3000);
         } catch (error) {
             console.error('Error reindexing document:', error);
             alert('Erro ao reindexar documento');
@@ -181,7 +151,7 @@ const DocumentsTab = () => {
 
     const handleFixEncoding = async (id: string) => {
         try {
-            const response = await fetch(`/api/documents/${id}/fix-encoding`, {
+            const response = await fetch(`${API_URL}/api/documents/${id}/fix-encoding`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
@@ -202,7 +172,7 @@ const DocumentsTab = () => {
 
     const handleDownload = async (id: string, fileName: string) => {
         try {
-            const response = await fetch(`/api/documents/${id}/download`, {
+            const response = await fetch(`${API_URL}/api/documents/${id}/download`, {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
                 }
@@ -262,12 +232,7 @@ const DocumentsTab = () => {
 
         try {
             for (const id of selectedIds) {
-                await fetch(`/api/documents/${id}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
-                    }
-                });
+                await documentsApi.delete(id);
             }
             setSelectedIds([]);
             setSelectionMode(false);
