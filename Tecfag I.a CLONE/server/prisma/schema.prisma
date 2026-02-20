@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,237 +8,162 @@ datasource db {
 }
 
 model User {
-  id         String   @id @default(uuid())
-  email      String   @unique
-  password   String
-  name       String
-  role       String   @default("USER") // USER or ADMIN
-  lastActive DateTime @default(now())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  mustChangePassword Boolean @default(false)
-
-  // AI Preferences
-  jobTitle           String?
-  department         String?
-  technicalLevel     String?
-  communicationStyle String?
-
-  // Access Group relation
-  accessGroupId String?
-  accessGroup   AccessGroup? @relation(fields: [accessGroupId], references: [id], onDelete: SetNull)
-
-  chatMessages         ChatMessage[]
-  archivedChats        ArchivedChat[]
-  chatFolders          ChatFolder[]
-  tokenUsages          TokenUsage[]
-  messageFeedbacks     MessageFeedback[]
-  chatSessionContext   ChatSessionContext?
-  notificationSettings NotificationSettings?
-  notifications        Notification[]
-
-  // Permissions Overrides (null = inherit from group, true = allow, false = block)
-  // ===== VISUALIZAÇÃO =====
-  canViewChat          Boolean?
-  canViewMindMap       Boolean?
-  canViewCatalog       Boolean?
-  canViewUsers         Boolean?
-  canViewMonitoring    Boolean?
-  canViewDocuments     Boolean?
-  canViewSettings      Boolean?
-  canViewNotifications Boolean?
-  
-  // ===== AÇÕES - MAPA MENTAL =====
-  canCreateMindMap     Boolean?
-  canEditMindMap       Boolean?
-  canDeleteMindMap     Boolean?
-  
-  // ===== AÇÕES - CATÁLOGO =====
-  canCreateCatalog     Boolean?
-  canEditCatalog       Boolean?
-  canDeleteCatalog     Boolean?
-  
-  // ===== AÇÕES - USUÁRIOS =====
-  canCreateUsers       Boolean?
-  canEditUsers         Boolean?
-  canDeleteUsers       Boolean?
-  
-  // ===== AÇÕES - DOCUMENTOS =====
-  canUploadDocuments   Boolean?
-  canEditDocuments     Boolean?
-  canDeleteDocuments   Boolean?
-  
-  // ===== AÇÕES - CHAT =====
-  canArchiveChat       Boolean?
-  canDeleteChatHistory Boolean?
-  
-  // ===== AÇÕES - NOTIFICAÇÕES =====
+  id                     String                @id @default(uuid())
+  email                  String                @unique
+  password               String
+  name                   String
+  role                   String                @default("USER")
+  lastActive             DateTime              @default(now())
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  mustChangePassword     Boolean               @default(false)
+  jobTitle               String?
+  department             String?
+  technicalLevel         String?
+  communicationStyle     String?
+  accessGroupId          String?
+  canViewChat            Boolean?
+  canViewMindMap         Boolean?
+  canViewCatalog         Boolean?
+  canViewUsers           Boolean?
+  canViewMonitoring      Boolean?
+  canViewDocuments       Boolean?
+  canViewSettings        Boolean?
+  canViewNotifications   Boolean?
+  canCreateMindMap       Boolean?
+  canEditMindMap         Boolean?
+  canDeleteMindMap       Boolean?
+  canCreateCatalog       Boolean?
+  canEditCatalog         Boolean?
+  canDeleteCatalog       Boolean?
+  canCreateUsers         Boolean?
+  canEditUsers           Boolean?
+  canDeleteUsers         Boolean?
+  canUploadDocuments     Boolean?
+  canEditDocuments       Boolean?
+  canDeleteDocuments     Boolean?
+  canArchiveChat         Boolean?
+  canDeleteChatHistory   Boolean?
   canDeleteNotifications Boolean?
-  
-  // ===== ADMINISTRAÇÃO =====
-  canManageAccessGroups Boolean?
-  canManageBackups      Boolean?
-  canViewTokenCosts     Boolean?
+  canManageAccessGroups  Boolean?
+  canManageBackups       Boolean?
+  canViewTokenCosts      Boolean?
+  archivedChats          ArchivedChat[]
+  chatFolders            ChatFolder[]
+  chatMessages           ChatMessage[]
+  chatSessionContext     ChatSessionContext?
+  messageFeedbacks       MessageFeedback[]
+  notifications          Notification[]
+  notificationSettings   NotificationSettings?
+  tokenUsages            TokenUsage[]
+  accessGroup            AccessGroup?          @relation(fields: [accessGroupId], references: [id])
 }
 
-// Grupos de acesso com permissões por módulo
 model AccessGroup {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  description String?
-  
-  // ===== PERMISSÕES DE VISUALIZAÇÃO =====
-  canViewChat          Boolean @default(true)
-  canViewMindMap       Boolean @default(true)
-  canViewCatalog       Boolean @default(true)
-  canViewUsers         Boolean @default(false)
-  canViewMonitoring    Boolean @default(false)
-  canViewDocuments     Boolean @default(false)
-  canViewSettings      Boolean @default(false)
-  canViewNotifications Boolean @default(true)
-  
-  // ===== PERMISSÕES DE AÇÃO - MAPA MENTAL =====
-  canCreateMindMap     Boolean @default(true)
-  canEditMindMap       Boolean @default(true)
-  canDeleteMindMap     Boolean @default(false)
-  
-  // ===== PERMISSÕES DE AÇÃO - CATÁLOGO =====
-  canCreateCatalog     Boolean @default(false)
-  canEditCatalog       Boolean @default(false)
-  canDeleteCatalog     Boolean @default(false)
-  
-  // ===== PERMISSÕES DE AÇÃO - USUÁRIOS =====
-  canCreateUsers       Boolean @default(false)
-  canEditUsers         Boolean @default(false)
-  canDeleteUsers       Boolean @default(false)
-  
-  // ===== PERMISSÕES DE AÇÃO - DOCUMENTOS =====
-  canUploadDocuments   Boolean @default(false)
-  canEditDocuments     Boolean @default(false)
-  canDeleteDocuments   Boolean @default(false)
-  
-  // ===== PERMISSÕES DE AÇÃO - CHAT =====
-  canArchiveChat       Boolean @default(true)
-  canDeleteChatHistory Boolean @default(true)
-  
-  // ===== PERMISSÕES DE AÇÃO - NOTIFICAÇÕES =====
-  canDeleteNotifications Boolean @default(true)
-  
-  // ===== PERMISSÕES DE ADMINISTRAÇÃO =====
-  canManageAccessGroups Boolean @default(false)
-  canManageBackups      Boolean @default(false)
-  canViewTokenCosts     Boolean @default(false)
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  users       User[]
+  id                     String   @id @default(uuid())
+  name                   String   @unique
+  description            String?
+  canViewChat            Boolean  @default(true)
+  canViewMindMap         Boolean  @default(true)
+  canViewCatalog         Boolean  @default(true)
+  canViewUsers           Boolean  @default(false)
+  canViewMonitoring      Boolean  @default(false)
+  canViewDocuments       Boolean  @default(false)
+  canViewSettings        Boolean  @default(false)
+  canViewNotifications   Boolean  @default(true)
+  canCreateMindMap       Boolean  @default(true)
+  canEditMindMap         Boolean  @default(true)
+  canDeleteMindMap       Boolean  @default(false)
+  canCreateCatalog       Boolean  @default(false)
+  canEditCatalog         Boolean  @default(false)
+  canDeleteCatalog       Boolean  @default(false)
+  canCreateUsers         Boolean  @default(false)
+  canEditUsers           Boolean  @default(false)
+  canDeleteUsers         Boolean  @default(false)
+  canUploadDocuments     Boolean  @default(false)
+  canEditDocuments       Boolean  @default(false)
+  canDeleteDocuments     Boolean  @default(false)
+  canArchiveChat         Boolean  @default(true)
+  canDeleteChatHistory   Boolean  @default(true)
+  canDeleteNotifications Boolean  @default(true)
+  canManageAccessGroups  Boolean  @default(false)
+  canManageBackups       Boolean  @default(false)
+  canViewTokenCosts      Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  users                  User[]
 }
 
-// Feedback de usuários sobre respostas da IA
 model MessageFeedback {
-  id            String   @id @default(uuid())
-  
-  // Mensagem avaliada
-  messageId     String?  // ID da ChatMessage se ainda existir
-  messageContent String  // Cópia do conteúdo (para histórico)
-  queryContent   String  // Pergunta que gerou a resposta
-  
-  // Feedback
-  rating        String   // "positive" | "negative"
-  category      String?  // "incorrect" | "incomplete" | "confusing" | "too_long" | "other"
-  comment       String?
-  
-  // Contexto
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Metadados
-  model         String?  // Qual modelo gerou a resposta
-  catalogId     String?
-  
-  createdAt     DateTime @default(now())
-  
+  id             String   @id @default(uuid())
+  messageId      String?
+  messageContent String
+  queryContent   String
+  rating         String
+  category       String?
+  comment        String?
+  userId         String
+  model          String?
+  catalogId      String?
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([rating])
   @@index([category])
   @@index([userId])
   @@index([createdAt])
 }
 
-// Contexto de sessão de chat para memória inteligente
 model ChatSessionContext {
-  id            String   @id @default(uuid())
-  userId        String   @unique
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Resumo progressivo da conversa
-  contextSummary    String?   // Resumo condensado das últimas N mensagens
-  
-  // Entidades mencionadas (JSON)
-  mentionedEntities String?   // {"machines": ["Seladora X"], "topics": ["manutenção"]}
-  
-  // Informações já fornecidas (para evitar repetição)
-  providedInfo      String?   // JSON com hashes de informações já dadas
-  
-  // Preferências detectadas durante conversa
-  detectedPreferences String? // {"prefersTables": true, "technicalLevel": "advanced"}
-  
-  // Controle de mensagens
-  messageCount      Int      @default(0)
-  
-  lastUpdated       DateTime @default(now())
-  createdAt         DateTime @default(now())
-  
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  contextSummary      String?
+  mentionedEntities   String?
+  providedInfo        String?
+  detectedPreferences String?
+  messageCount        Int      @default(0)
+  lastUpdated         DateTime @default(now())
+  createdAt           DateTime @default(now())
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }
 
-// Registro de uso de tokens por solicitação
 model TokenUsage {
-  id            String   @id @default(uuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Tokens consumidos
-  inputTokens   Int
-  outputTokens  Int
-  totalTokens   Int
-  
-  // Contexto
-  model         String   // ex: "gemini-1.5-pro", "llama-3.3-70b-versatile"
-  requestType   String   @default("chat") // "chat", "embedding", etc.
-  
-  createdAt     DateTime @default(now())
-  
+  id           String   @id @default(uuid())
+  userId       String
+  inputTokens  Int
+  outputTokens Int
+  totalTokens  Int
+  model        String
+  requestType  String   @default("chat")
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([createdAt])
 }
 
-// Configurações globais de custo por token
 model TokenCostSettings {
-  id               String   @id @default(uuid())
-  
-  // Custo por milhão de tokens (em BRL ou moeda configurada)
-  inputCostPer1M   Float    @default(0)
-  outputCostPer1M  Float    @default(0)
-  
-  currency         String   @default("BRL")
-  
-  updatedAt        DateTime @updatedAt
+  id              String   @id @default(uuid())
+  inputCostPer1M  Float    @default(0)
+  outputCostPer1M Float    @default(0)
+  currency        String   @default("BRL")
+  updatedAt       DateTime @updatedAt
 }
 
 model Machine {
-  id                String   @id @default(uuid())
+  id                String                 @id @default(uuid())
   name              String
   category          String
   capacity          String
   model             String
   price             String
-  maintenanceStatus String   @default("ok") // ok, attention, critical
+  maintenanceStatus String                 @default("ok")
   lastMaintenance   String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  specifications MachineSpecification[]
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  specifications    MachineSpecification[]
 }
 
 model MachineSpecification {
@@ -252,27 +174,23 @@ model MachineSpecification {
 }
 
 model MindMap {
-  id        String   @id @default(uuid())
+  id        String        @id @default(uuid())
   name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  nodes MindMapNode[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  nodes     MindMapNode[]
 }
 
 model MindMapNode {
-  id        String  @id @default(uuid())
-  mindMapId String
-  label     String
-  type      String  // machine, process, parameter
-  x         Float
-  y         Float
-  mindMap   MindMap @relation(fields: [mindMapId], references: [id], onDelete: Cascade)
-
-  // Connections from this node
+  id              String              @id @default(uuid())
+  mindMapId       String
+  label           String
+  type            String
+  x               Float
+  y               Float
   connectionsFrom MindMapConnection[] @relation("FromNode")
-  // Connections to this node
   connectionsTo   MindMapConnection[] @relation("ToNode")
+  mindMap         MindMap             @relation(fields: [mindMapId], references: [id], onDelete: Cascade)
 }
 
 model MindMapConnection {
@@ -288,222 +206,160 @@ model MindMapConnection {
 model ChatMessage {
   id        String   @id @default(uuid())
   userId    String
-  role      String   // user or assistant
+  role      String
   content   String
   createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ArchivedChat {
-  id            String   @id @default(uuid())
+  id            String      @id @default(uuid())
   userId        String
   title         String
   messagesCount Int
-  messages      String   // JSON string of messages array
-  createdAt     DateTime @default(now())
-  archivedAt    DateTime @default(now())
+  messages      String
+  createdAt     DateTime    @default(now())
+  archivedAt    DateTime    @default(now())
   folderId      String?
-  isPinned      Boolean  @default(false)
-
-  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folder ChatFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  isPinned      Boolean     @default(false)
+  folder        ChatFolder? @relation(fields: [folderId], references: [id])
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ChatFolder {
-  id        String   @id @default(uuid())
-  userId    String
-  name      String
-  isDefault Boolean  @default(false)
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
-
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String         @id @default(uuid())
+  userId        String
+  name          String
+  isDefault     Boolean        @default(false)
+  order         Int            @default(0)
+  createdAt     DateTime       @default(now())
   archivedChats ArchivedChat[]
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model CatalogItem {
-  id          String   @id @default(uuid())
-  code        String   @unique
+  id          String     @id @default(uuid())
+  code        String     @unique
   name        String
   category    String
   description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  documents Document[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  documents   Document[]
 }
 
 model DocumentFolder {
-  id        String   @id @default(uuid())
+  id        String           @id @default(uuid())
   name      String
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
-
-  // Hierarquia de pastas
+  order     Int              @default(0)
+  createdAt DateTime         @default(now())
   parentId  String?
-  parent    DocumentFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children  DocumentFolder[] @relation("FolderHierarchy")
-
   documents Document[]
+  parent    DocumentFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children  DocumentFolder[] @relation("FolderHierarchy")
 }
 
 model Document {
-  id           String   @id @default(uuid())
-  catalogId    String?  // Tornando opcional para documentos globais
-  catalogItem  CatalogItem? @relation(fields: [catalogId], references: [id], onDelete: SetNull)
-  
-  // Modo de entrega: "text" = RAG normal (extrai texto), "media" = entrega como anexo
-  deliveryMode String   @default("text")
-  
-  // Folder organization
-  folderId     String?
-  folder       DocumentFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
-
-  // File information
-  fileName     String
-  fileType     String
-  fileSize     Int
-  filePath     String
-
-  // Processing status
-  indexed      Boolean  @default(false)
-  processingProgress Int @default(0)
+  id                 String          @id @default(uuid())
+  catalogId          String?
+  deliveryMode       String          @default("text")
+  folderId           String?
+  fileName           String
+  fileType           String
+  fileSize           Int
+  filePath           String
+  indexed            Boolean         @default(false)
+  processingProgress Int             @default(0)
   processingError    String?
-
-  // Controle de ativação
-  isActive     Boolean  @default(true)  // Permite desativar sem deletar
-
-  // Indexing metadata
-  chunkCount   Int?
-  totalTokens  Int?
-
-  // Audit
-  uploadedBy   String?
-  uploadedAt   DateTime @default(now())
-  indexedAt    DateTime?
-
-  // Version control
-  version      Int      @default(1)
-  previousVersionId String?
-
-  chunks       DocumentChunk[]
+  isActive           Boolean         @default(true)
+  chunkCount         Int?
+  totalTokens        Int?
+  uploadedBy         String?
+  uploadedAt         DateTime        @default(now())
+  indexedAt          DateTime?
+  version            Int             @default(1)
+  previousVersionId  String?
+  catalogItem        CatalogItem?    @relation(fields: [catalogId], references: [id])
+  folder             DocumentFolder? @relation(fields: [folderId], references: [id])
+  chunks             DocumentChunk[]
 }
 
 model DocumentChunk {
   id         String   @id @default(uuid())
   documentId String
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-
-  // Chunk content
   content    String
   chunkIndex Int
-
-  // Embedding vector (stored as JSON array)
   embedding  String
-
-  // Metadata
-  metadata   String?  // JSON string for flexible metadata
-
+  metadata   String?
   createdAt  DateTime @default(now())
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([documentId])
 }
 
-// ========== CACHE INTELIGENTE PARA RAG ==========
-
-// Cache de queries para respostas RAG
 model QueryCache {
   id             String   @id @default(uuid())
-  
-  // Query original e identificadores
   queryText      String
-  queryHash      String   @unique  // Hash MD5 para exact match
-  queryEmbedding String             // Embedding para semantic match
-  
-  // Resposta cacheada
+  queryHash      String   @unique
+  queryEmbedding String
   response       String
-  sources        String?            // JSON com fontes usadas
-  
-  // Metadados de uso
+  sources        String?
   hitCount       Int      @default(0)
-  catalogId      String?            // Escopo do cache
-  userId         String?            // Escopo do usuário (opcional para retrocompatibilidade)
-  
-  // Invalidação - IDs dos documentos usados na resposta
-  documentIds    String             // JSON array de IDs de documentos
-  
-  // Timestamps
+  catalogId      String?
+  userId         String?
+  documentIds    String
   createdAt      DateTime @default(now())
   lastUsed       DateTime @default(now())
   expiresAt      DateTime
-  
+
   @@index([queryHash])
   @@index([catalogId])
   @@index([userId])
   @@index([expiresAt])
 }
 
-// Cache de embeddings para queries
 model EmbeddingCache {
-  id         String   @id @default(uuid())
-  textHash   String   @unique  // Hash MD5 do texto
-  embedding  String             // Embedding em JSON
-  createdAt  DateTime @default(now())
-  
+  id        String   @id @default(uuid())
+  textHash  String   @unique
+  embedding String
+  createdAt DateTime @default(now())
+
   @@index([textHash])
 }
 
-// ========== SISTEMA DE NOTIFICAÇÕES ==========
-
-// Configurações de notificação do usuário
 model NotificationSettings {
-  id                    String   @id @default(uuid())
-  userId                String   @unique
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Tipos de notificação habilitados
-  systemAlerts          Boolean  @default(true)   // Erros de sistema, status IA
-  userAlerts            Boolean  @default(true)   // Novos usuários, logins falhos
-  documentAlerts        Boolean  @default(true)   // Uploads, novos docs
-  chatAlerts            Boolean  @default(true)   // Feedbacks negativos
-  
-  // Preferências de entrega
-  inAppEnabled          Boolean  @default(true)
-  emailEnabled          Boolean  @default(false)  // Para implementação futura
-  
-  // Frequência
-  frequency             String   @default("realtime") // realtime | daily | weekly
-  
-  // Horário de silêncio
-  quietHoursEnabled     Boolean  @default(false)
-  quietHoursStart       String?  // "22:00"
-  quietHoursEnd         String?  // "08:00"
-  
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  systemAlerts      Boolean  @default(true)
+  userAlerts        Boolean  @default(true)
+  documentAlerts    Boolean  @default(true)
+  chatAlerts        Boolean  @default(true)
+  inAppEnabled      Boolean  @default(true)
+  emailEnabled      Boolean  @default(false)
+  frequency         String   @default("realtime")
+  quietHoursEnabled Boolean  @default(false)
+  quietHoursStart   String?
+  quietHoursEnd     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// Notificações individuais
 model Notification {
-  id          String    @id @default(uuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  type        String    // system | user | document | chat
-  category    String    // error | warning | info | success
-  title       String
-  message     String
-  metadata    String?   // JSON com dados adicionais
-  
-  isRead      Boolean   @default(false)
-  readAt      DateTime?
-  
-  createdAt   DateTime  @default(now())
-  
+  id        String    @id @default(uuid())
+  userId    String
+  type      String
+  category  String
+  title     String
+  message   String
+  metadata  String?
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([isRead])
   @@index([type])
   @@index([createdAt])
 }
-

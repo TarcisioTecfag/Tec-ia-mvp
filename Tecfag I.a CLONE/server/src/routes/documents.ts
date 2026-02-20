@@ -1,9 +1,10 @@
 import express, { Request, Response } from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs/promises';
 import { PrismaClient } from '@prisma/client';
-import { processDocument, deleteDocument, reindexDocument, fixDocumentEncoding } from '../services/ai/documentProcessor';
+import fs from 'fs';
+import { exec } from 'child_process';
+import path from 'path';
+import fsPromises from 'fs/promises';
 import { authenticate, adminOnly, AuthRequest } from '../middleware/auth';
 import * as cacheService from '../services/ai/cacheService';
 
@@ -21,7 +22,7 @@ const storage = multer.diskStorage({
 
         // Ensure upload directory exists
         try {
-            await fs.mkdir(uploadDir, { recursive: true });
+            await fsPromises.mkdir(uploadDir, { recursive: true });
             cb(null, uploadDir);
         } catch (error) {
             console.error('[Upload] Error creating upload directory:', error);
@@ -88,7 +89,7 @@ router.post('/upload', adminOnly, upload.single('file'), async (req: AuthRequest
             });
 
             if (!catalogItem) {
-                await fs.unlink(file.path);
+                await fsPromises.unlink(file.path);
                 return res.status(404).json({ error: 'Item de catálogo não encontrado' });
             }
         }
@@ -144,7 +145,7 @@ router.post('/restore-file', adminOnly, upload.single('file'), async (req: AuthR
         const uploadDir = path.resolve(process.env.UPLOAD_DIR || './uploads');
         const targetPath = path.join(uploadDir, targetFilename);
 
-        await fs.rename(file.path, targetPath);
+        await fsPromises.rename(file.path, targetPath);
 
         res.json({ success: true, message: 'Arquivo restaurado com sucesso' });
     } catch (error: any) {
@@ -268,7 +269,7 @@ router.delete('/:documentId', adminOnly, async (req: AuthRequest, res: Response)
 
         // Delete file from disk
         try {
-            await fs.unlink(document.filePath);
+            await fsPromises.unlink(document.filePath);
         } catch (error) {
             console.error('Error deleting file:', error);
             // Continue anyway
@@ -662,6 +663,29 @@ router.put('/:documentId/move', adminOnly, async (req: AuthRequest, res: Respons
         });
     } catch (error: any) {
         console.error('Error moving document:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// --- Admin endpoint to run the import script inside the cloud server ---
+router.post('/admin/run-import', adminOnly, async (req: AuthRequest, res: Response) => {
+    try {
+        console.log('Running internal db:migrate:import on cloud server...');
+        res.json({ success: true, message: 'Database import triggered internally' });
+
+        // Trigger the script asynchronously so the request doesn't timeout
+        exec('npx tsx migrate-data.ts import', (error, stdout, stderr) => {
+            if (error) {
+                console.error(`Error running import script: ${error.message}`);
+                return;
+            }
+            if (stderr) {
+                console.error(`Import script stderr: ${stderr}`);
+            }
+            console.log(`Import script stdout:\n${stdout}`);
+        });
+
+    } catch (error: any) {
+        console.error('Error running import:', error);
         res.status(500).json({ error: error.message });
     }
 });
