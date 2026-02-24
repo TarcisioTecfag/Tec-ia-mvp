@@ -6,6 +6,7 @@ import { exec } from 'child_process';
 import path from 'path';
 import fsPromises from 'fs/promises';
 import { authenticate, adminOnly, AuthRequest } from '../middleware/auth';
+import { processDocument, deleteDocument, reindexDocument, fixDocumentEncoding } from '../services/ai/documentProcessor';
 import * as cacheService from '../services/ai/cacheService';
 
 const router = express.Router();
@@ -423,7 +424,7 @@ router.get('/:documentId/download', async (req: AuthRequest, res: Response) => {
 
         // Check if file exists
         try {
-            await fs.access(document.filePath);
+            await fsPromises.access(document.filePath);
         } catch {
             return res.status(404).json({ error: 'Arquivo não encontrado no servidor' });
         }
