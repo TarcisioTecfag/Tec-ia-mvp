@@ -1,4 +1,5 @@
-import { Cpu, Shield, User, LogOut, ChevronUp, ChevronDown } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Cpu, Shield, User, LogOut, ChevronUp, ChevronDown, Volume2, VolumeX } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +27,18 @@ interface HeaderProps {
 }
 
 const Header = ({ isAdmin, user, onLogout, isCollapsed, onToggleCollapse }: HeaderProps) => {
+  const [isMuted, setIsMuted] = useState(false);
+
+  useEffect(() => {
+    setIsMuted(localStorage.getItem('isSystemMuted') === 'true');
+  }, []);
+
+  const toggleMute = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const newMutedState = !isMuted;
+    setIsMuted(newMutedState);
+    localStorage.setItem('isSystemMuted', String(newMutedState));
+  };
 
   return (
     <>
@@ -98,6 +111,15 @@ const Header = ({ isAdmin, user, onLogout, isCollapsed, onToggleCollapse }: Head
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-xs text-muted-foreground">
                   Tipo: {isAdmin ? "Administrador" : "Usuário"}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={toggleMute} className="cursor-pointer">
+                  {isMuted ? (
+                    <VolumeX className="w-4 h-4 mr-2 text-muted-foreground" />
+                  ) : (
+                    <Volume2 className="w-4 h-4 mr-2 text-muted-foreground" />
+                  )}
+                  {isMuted ? "Ativar som do sistema" : "Silenciar sistema"}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem

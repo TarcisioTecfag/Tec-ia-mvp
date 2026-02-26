@@ -16,6 +16,7 @@ export const useChatSound = () => {
     }, []);
 
     const playSend = useCallback(() => {
+        if (localStorage.getItem('isSystemMuted') === 'true') return;
         const ctx = initAudioContext();
         const oscillator = ctx.createOscillator();
         const gainNode = ctx.createGain();
@@ -35,6 +36,7 @@ export const useChatSound = () => {
     }, [initAudioContext]);
 
     const playReceive = useCallback(() => {
+        if (localStorage.getItem('isSystemMuted') === 'true') return;
         const ctx = initAudioContext();
 
         // Simple chime (major triad arpeggio)
@@ -59,6 +61,7 @@ export const useChatSound = () => {
     }, [initAudioContext]);
 
     const startThinking = useCallback(() => {
+        if (localStorage.getItem('isSystemMuted') === 'true') return;
         if (thinkingOscillatorRef.current) return;
         const ctx = initAudioContext();
 
